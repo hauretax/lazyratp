@@ -37,7 +37,9 @@ function saveConfig() {
     display,
     columns,
     routeMode,
-    walkMinutes,
+    walkDeparture,
+    walkArrival,
+    favorites,
   }, null, 2));
 }
 
@@ -52,6 +54,7 @@ let departures = [];
 const display = {
   banner: true,
   tableHeader: true,
+  aligned: true,
   ...(config.display || {}),
 };
 
@@ -67,8 +70,12 @@ const columns = {
 // Route display: "off" | "code" | "full"
 let routeMode = config.routeMode || "full";
 
-// Walk time to station (minutes)
-let walkMinutes = config.walkMinutes || 0;
+// Walk times (minutes)
+let walkDeparture = config.walkDeparture || config.walkMinutes || 0;
+let walkArrival = config.walkArrival || 0;
+
+// Favorites
+let favorites = config.favorites || [];
 
 // --- API ---
 
@@ -115,17 +122,27 @@ async function fetchJourneys() {
   const json = await res.json();
 
   return (json.journeys || []).map((j) => {
-    const sections = (j.sections || []).filter((s) => s.type === "public_transport");
-    const steps = sections.map((s) => {
-      const info = s.display_informations || {};
-      return {
-        mode: info.commercial_mode || "?",
-        code: info.code || "",
-        direction: info.direction || "",
-        from: s.from?.stop_point?.name || "?",
-        to: s.to?.stop_point?.name || "?",
-      };
-    });
+    const allSections = j.sections || [];
+    const steps = [];
+    let pendingWalk = 0;
+
+    for (const s of allSections) {
+      if (s.type === "public_transport") {
+        const info = s.display_informations || {};
+        steps.push({
+          mode: info.commercial_mode || "?",
+          code: info.code || "",
+          direction: info.direction || "",
+          from: s.from?.stop_point?.name || "?",
+          to: s.to?.stop_point?.name || "?",
+          duration: s.duration || 0,
+          walkBefore: pendingWalk,
+        });
+        pendingWalk = 0;
+      } else {
+        pendingWalk += s.duration || 0;
+      }
+    }
 
     return {
       departure: parseNavitiaTime(j.departure_date_time),
@@ -133,6 +150,7 @@ async function fetchJourneys() {
       duration: j.duration,
       transfers: j.nb_transfers,
       steps,
+      walkAfterLast: pendingWalk,
       status: j.status === "NO_SERVICE" ? "cancelled" : "onTime",
       // Display info from first transport section
       code: steps[0]?.code || "",
@@ -162,14 +180,16 @@ function fmtTime(isoStr) {
 
 function updateProcessTitle() {
   const next = departures.find((d) => d.status !== "cancelled" && d.arrivalAtDest);
-  process.title = next ? fmtTime(next.arrivalAtDest) : "--:--";
+  if (!next) { process.title = "--:--"; return; }
+  const arrDate = new Date(new Date(next.arrivalAtDest).getTime() + walkArrival * 60000);
+  process.title = fmtTime(arrDate.toISOString());
 }
 
 function fmtWait(dep) {
   if (dep.status === "cancelled") return "{red-fg}Annulé{/red-fg}";
   const diffMin = Math.round((new Date(dep.departure) - new Date()) / 60000);
   if (diffMin <= 0) return "{yellow-fg}à quai{/yellow-fg}";
-  if (walkMinutes > 0 && diffMin <= walkMinutes) {
+  if (walkDeparture > 0 && diffMin <= walkDeparture) {
     return `{magenta-fg}${diffMin} min{/magenta-fg}`;
   }
   if (diffMin === 1) return "{green-fg}1 min{/green-fg}";
@@ -310,42 +330,83 @@ function createUI() {
   return { screen, header, table, footer, updateHeader, updateFooter, updateCompactClock, applyLayout, isCompact: () => screen.height < 10 || screen.width < 50, setPickerOpen: (v) => { pickerOpen = v; }, getPickerOpen: () => pickerOpen };
 }
 
-function fmtSteps(steps, cancelled) {
+function fmtSteps(d, firstWalkPad) {
   if (routeMode === "off") return "";
-  if (cancelled) {
-    if (routeMode === "code") return steps.map((s) => `{red-fg}${s.code}{/red-fg}`).join(" → ");
-    return steps.map((s) => `{gray-fg}${s.mode}{/gray-fg} {red-fg}${s.code}{/red-fg}`).join(" → ");
+  const { steps } = d;
+  const cancelled = d.status === "cancelled";
+  const segments = [];
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const code = cancelled ? `{red-fg}${s.code}{/red-fg}` : s.code;
+    const mode = routeMode === "full" ? `{gray-fg}${s.mode}{/gray-fg} ` : "";
+    const dur = s.duration ? ` {blue-fg}${Math.round(s.duration / 60)}{/blue-fg}` : "";
+    const walkMin = Math.round(s.walkBefore / 60);
+    let walk;
+    if (i === 0) {
+      const pad = firstWalkPad || 0;
+      if (walkMin > 0) {
+        walk = `{gray-fg}${walkMin.toString().padStart(pad)}{/gray-fg} `;
+      } else if (pad > 0) {
+        walk = " ".repeat(pad) + " ";
+      } else {
+        walk = "";
+      }
+    } else {
+      walk = walkMin > 0 ? `|{gray-fg}${walkMin}{/gray-fg} ` : " ";
+    }
+    segments.push(`${walk}${mode}${code}${dur}`);
   }
-  if (routeMode === "code") return steps.map((s) => s.code).join(" → ");
-  return steps.map((s) => `{gray-fg}${s.mode}{/gray-fg} ${s.code}`).join(" → ");
+  const walkAfter = Math.round((d.walkAfterLast || 0) / 60);
+  if (walkAfter > 0) segments.push(` {gray-fg}${walkAfter}{/gray-fg}`);
+  return segments.join("");
 }
 
-function buildRow(d) {
+function buildRowParts(d, firstWalkPad) {
   const parts = [];
 
-  if (columns.wait) parts.push(fmtWait(d).padEnd(22));
-  if (columns.departure) parts.push(fmtTime(d.departure));
+  if (columns.wait) parts.push(fmtWait(d));
+  if (columns.departure) {
+    const depDate = new Date(new Date(d.departure).getTime() - walkDeparture * 60000);
+    const walkTag = walkDeparture > 0 ? `{gray-fg}${walkDeparture}{/gray-fg} ` : "";
+    parts.push(`${walkTag}${fmtTime(depDate.toISOString())}`);
+  }
   if (columns.arrival) {
-    const arr = d.arrivalAtDest ? fmtTime(d.arrivalAtDest) : "--:--";
-    parts.push(`→ ${arr}`);
+    if (d.arrivalAtDest) {
+      const arrDate = new Date(new Date(d.arrivalAtDest).getTime() + walkArrival * 60000);
+      const walkTag = walkArrival > 0 ? `{gray-fg}${walkArrival}{/gray-fg} ` : "";
+      parts.push(`→ ${walkTag}${fmtTime(arrDate.toISOString())}`);
+    } else {
+      parts.push("→ --:--");
+    }
   }
   if (columns.duration) {
-    const mins = d.arrivalAtDest ? Math.round((new Date(d.arrivalAtDest) - new Date(d.departure)) / 60000) : null;
-    parts.push(mins !== null ? `{blue-fg}${mins} min{/blue-fg}`.padEnd(20) : "");
+    let totalSec = walkDeparture * 60 + walkArrival * 60 + (d.walkAfterLast || 0);
+    for (const s of d.steps) {
+      totalSec += (s.duration || 0) + (s.walkBefore || 0);
+    }
+    parts.push(`{magenta-fg}${Math.round(totalSec / 60)}{/magenta-fg}`);
   }
-  if (routeMode !== "off") parts.push(fmtSteps(d.steps, d.status === "cancelled"));
+  if (routeMode !== "off") parts.push(fmtSteps(d, firstWalkPad));
 
-  return parts.join("  ");
+  return parts;
 }
 
-function buildHeader() {
+function buildHeaderParts() {
   const parts = [];
-  if (columns.wait) parts.push("Attente".padEnd(10));
+  if (columns.wait) parts.push("Attente");
   if (columns.departure) parts.push("Départ");
-  if (columns.arrival) parts.push("  Arrivée");
-  if (columns.duration) parts.push("  Durée");
-  if (routeMode !== "off") parts.push("    Trajet");
-  return ` {bold}{underline}${parts.join("  ")}{/underline}{/bold}`;
+  if (columns.arrival) parts.push("Arrivée");
+  if (columns.duration) parts.push("Total");
+  if (routeMode !== "off") parts.push("Trajet");
+  return parts;
+}
+
+function padRow(parts, widths) {
+  return parts.map((p, i) => {
+    const visual = blessed.stripTags(p).length;
+    const pad = Math.max(0, widths[i] - visual);
+    return p + " ".repeat(pad);
+  }).join("  ");
 }
 
 function renderTable(table, deps, screen) {
@@ -355,12 +416,50 @@ function renderTable(table, deps, screen) {
   }
 
   const compact = screen.height < 10 || screen.width < 50;
-  const rows = deps.slice(0, 15).map((d) => (compact ? "" : " ") + buildRow(d));
+  const visible = deps.slice(0, 15);
+
+  // Compute max first-step walk width for route alignment
+  let firstWalkPad = 0;
+  if (routeMode !== "off") {
+    for (const d of visible) {
+      if (d.steps.length > 0) {
+        const w = Math.round(d.steps[0].walkBefore / 60);
+        if (w > 0) firstWalkPad = Math.max(firstWalkPad, w.toString().length);
+      }
+    }
+  }
+
+  const allParts = visible.map((d) => buildRowParts(d, firstWalkPad));
+
+  // Compute max widths per column
+  const widths = [];
+  if (display.aligned) {
+    const headerParts = buildHeaderParts();
+    for (let i = 0; i < headerParts.length; i++) {
+      widths[i] = headerParts[i].length;
+    }
+    for (const parts of allParts) {
+      for (let i = 0; i < parts.length; i++) {
+        const w = blessed.stripTags(parts[i]).length;
+        widths[i] = Math.max(widths[i] || 0, w);
+      }
+    }
+  }
+
+  const rows = allParts.map((parts) => {
+    const prefix = compact ? "" : " ";
+    if (display.aligned) return prefix + padRow(parts, widths);
+    return prefix + parts.join("  ");
+  });
 
   if (compact) {
     table.setContent(rows.join("\n"));
   } else if (display.tableHeader) {
-    table.setContent(`\n${buildHeader()}\n\n${rows.join("\n")}`);
+    const headerParts = buildHeaderParts();
+    const headerStr = display.aligned
+      ? " {bold}{underline}" + padRow(headerParts, widths) + "{/underline}{/bold}"
+      : " {bold}{underline}" + headerParts.join("  ") + "{/underline}{/bold}";
+    table.setContent(`\n${headerStr}\n\n${rows.join("\n")}`);
   } else {
     table.setContent(rows.join("\n"));
   }
@@ -559,6 +658,103 @@ function showStationPicker(screen, label, compact, onDone) {
   screen.render();
 }
 
+// --- Favorites panel ---
+
+function showFavoritesPanel(screen, compact, onAction) {
+  let selectedIndex = 0;
+
+  const container = blessed.box({
+    parent: screen,
+    top: compact ? 0 : "center",
+    left: compact ? 0 : "center",
+    width: compact ? "100%" : "65%",
+    height: compact ? "100%" : "75%",
+    border: compact ? null : { type: "line" },
+    style: { border: { fg: "cyan" }, bg: "black" },
+    tags: true,
+    label: compact ? "" : " {bold}Favoris{/bold} ",
+    keyable: true,
+  });
+
+  const list = blessed.list({
+    parent: container,
+    top: compact ? 0 : 1,
+    left: compact ? 0 : 1,
+    right: compact ? 0 : 1,
+    bottom: compact ? 0 : 1,
+    tags: true,
+    style: {
+      fg: "white",
+      bg: "black",
+      selected: { bg: "red", fg: "white", bold: true },
+      item: { fg: "white", bg: "black" },
+    },
+    scrollable: true,
+  });
+
+  function refreshList() {
+    if (favorites.length === 0) {
+      list.setItems([compact ? "Aucun favori — F pour ajouter" : " {gray-fg}Aucun favori — F pour ajouter{/gray-fg}"]);
+    } else {
+      list.setItems(favorites.map((f) => ` ${f.from.name} → ${f.to.name}`));
+      selectedIndex = Math.min(selectedIndex, favorites.length - 1);
+      list.select(selectedIndex);
+    }
+    screen.render();
+  }
+
+  function cleanup() {
+    container.destroy();
+    screen.render();
+  }
+
+  container.focus();
+
+  container.on("keypress", (_ch, key) => {
+    if (key.name === "escape") {
+      cleanup();
+      onAction(null);
+      return;
+    }
+
+    if (favorites.length === 0) return;
+
+    if (key.name === "down" || key.name === "j") {
+      selectedIndex = Math.min(selectedIndex + 1, favorites.length - 1);
+      list.select(selectedIndex);
+      screen.render();
+      return;
+    }
+    if (key.name === "up" || key.name === "k") {
+      selectedIndex = Math.max(selectedIndex - 1, 0);
+      list.select(selectedIndex);
+      screen.render();
+      return;
+    }
+
+    if (key.name === "return" || key.name === "enter") {
+      const fav = favorites[selectedIndex];
+      cleanup();
+      onAction({ type: "load", favorite: fav });
+      return;
+    }
+
+    if (key.name === "d" || key.name === "x") {
+      favorites.splice(selectedIndex, 1);
+      saveConfig();
+      if (favorites.length === 0) {
+        selectedIndex = 0;
+      } else {
+        selectedIndex = Math.min(selectedIndex, favorites.length - 1);
+      }
+      refreshList();
+      return;
+    }
+  });
+
+  refreshList();
+}
+
 // --- Main ---
 
 async function main() {
@@ -610,16 +806,22 @@ async function main() {
       return;
     }
 
+    const helpWidth = Math.min(50, Math.max(36, screen.width - 6));
+    const helpHeight = Math.min(24, screen.height - 2);
     helpBox = blessed.box({
       parent: screen,
       top: "center",
       left: "center",
-      width: 34,
-      height: 23,
+      width: helpWidth,
+      height: helpHeight,
       tags: true,
       border: { type: "line" },
       style: { border: { fg: "cyan" }, bg: "black", fg: "white" },
       label: " {bold}Aide{/bold} ",
+      scrollable: true,
+      keys: true,
+      vi: true,
+      scrollbar: { style: { bg: "cyan" } },
     });
 
     refreshHelp();
@@ -642,24 +844,40 @@ async function main() {
     const routeLabel = { off: "{gray-fg}○{/gray-fg}", code: "{yellow-fg}◐{/yellow-fg}", full: "{green-fg}●{/green-fg}" };
     helpBox.setContent([
       "",
-      "  {bold}Colonnes{/bold}",
-      `  {bold}1{/bold} Attente        ${on(columns.wait)}`,
-      `  {bold}2{/bold} Heure départ   ${on(columns.departure)}`,
-      `  {bold}3{/bold} Heure arrivée  ${on(columns.arrival)}`,
-      `  {bold}4{/bold} Durée trajet   ${on(columns.duration)}`,
+      "  {bold}Lecture{/bold}",
       "",
-      "  {bold}Affichage{/bold}",
-      `  {bold}B{/bold} Bandeau        ${on(display.banner)}`,
-      `  {bold}H{/bold} En-tête tab.   ${on(display.tableHeader)}`,
-      `  {bold}T{/bold} Transport      ${routeLabel[routeMode]}`,
-      "    {gray-fg}○ off  ◐ code  ● détail{/gray-fg}",
-      `  {bold}+{/bold}/{bold}-{/bold} Marche gare   ${walkMinutes > 0 ? `{magenta-fg}${walkMinutes} min{/magenta-fg}` : "{gray-fg}0{/gray-fg}"}`,
+      "  {green-fg}3 min{/green-fg}     temps avant le départ",
+      "  {yellow-fg}à quai{/yellow-fg}    train en gare",
+      "  {magenta-fg}2 min{/magenta-fg}     pas le temps d'y aller",
+      "  {red-fg}Annulé{/red-fg}    train supprimé",
+      "",
+      "  {gray-fg}5{/gray-fg} 15:19    {gray-fg}marche{/gray-fg} puis heure de départ",
+      "  → {gray-fg}10{/gray-fg} 16:24  {gray-fg}marche{/gray-fg} puis heure d'arrivée",
+      "  {magenta-fg}66{/magenta-fg}          durée totale porte à porte",
+      "",
+      "  {gray-fg}3{/gray-fg} A {blue-fg}6{/blue-fg}|{gray-fg}9{/gray-fg} E {blue-fg}22{/blue-fg}|{gray-fg}16{/gray-fg} J {blue-fg}14{/blue-fg} {gray-fg}2{/gray-fg}",
+      "  {gray-fg}│{/gray-fg}   {blue-fg}│{/blue-fg} {gray-fg}│{/gray-fg}     {blue-fg}│{/blue-fg}  {gray-fg}│{/gray-fg}    {blue-fg}│{/blue-fg} {gray-fg}│{/gray-fg}",
+      "  {gray-fg}│{/gray-fg}   {blue-fg}│{/blue-fg} {gray-fg}│{/gray-fg}     {blue-fg}│{/blue-fg}  {gray-fg}│{/gray-fg}    {blue-fg}│{/blue-fg} {gray-fg}└ marche fin{/gray-fg}",
+      "  {gray-fg}│{/gray-fg}   {blue-fg}│{/blue-fg} {gray-fg}│{/gray-fg}     {blue-fg}│{/blue-fg}  {gray-fg}│{/gray-fg}    {blue-fg}└ transport{/blue-fg}",
+      "  {gray-fg}│{/gray-fg}   {blue-fg}│{/blue-fg} {gray-fg}│{/gray-fg}     {blue-fg}│{/blue-fg}  {gray-fg}└ corresp.{/gray-fg}",
+      "  {gray-fg}│{/gray-fg}   {blue-fg}│{/blue-fg} {gray-fg}│{/gray-fg}     {blue-fg}└ transport{/blue-fg}",
+      "  {gray-fg}│{/gray-fg}   {blue-fg}│{/blue-fg} {gray-fg}└ corresp.{/gray-fg}",
+      "  {gray-fg}│{/gray-fg}   {blue-fg}└ transport{/blue-fg}",
+      "  {gray-fg}└ marche début{/gray-fg}",
+      "",
+      "  {bold}Colonnes{/bold}           {bold}Affichage{/bold}",
+      `  {bold}W{/bold} Attente     ${on(columns.wait)}   {bold}A{/bold} Aligner   ${on(display.aligned)}`,
+      `  {bold}D{/bold} Départ      ${on(columns.departure)}   {bold}B{/bold} Bandeau   ${on(display.banner)}`,
+      `  {bold}R{/bold} Arrivée     ${on(columns.arrival)}   {bold}H{/bold} En-tête   ${on(display.tableHeader)}`,
+      `  {bold}U{/bold} Durée       ${on(columns.duration)}   {bold}T{/bold} Transport ${routeLabel[routeMode]}`,
+      "",
+      `  {bold}+{/bold}/{bold}-{/bold} Marche départ       ${walkDeparture > 0 ? `{magenta-fg}${walkDeparture}{/magenta-fg}` : "{gray-fg}0{/gray-fg}"}`,
+      `  {bold}]{/bold}/{bold}[{/bold} Marche arrivée      ${walkArrival > 0 ? `{cyan-fg}${walkArrival}{/cyan-fg}` : "{gray-fg}0{/gray-fg}"}`,
       "",
       "  {bold}Actions{/bold}",
-      "  {bold}r{/bold} Rafraîchir",
-      "  {bold}d{/bold} Gare de départ",
-      "  {bold}a{/bold} Gare d'arrivée",
-      "  {bold}q{/bold} Quitter",
+      "  {bold}r{/bold} Rafraîchir     {bold}d{/bold} Départ",
+      "  {bold}a{/bold} Arrivée        {bold}q{/bold} Quitter",
+      "  {bold}f{/bold} Favoris        {bold}F{/bold} Ajouter favori",
       "  {bold}?{/bold} Fermer l'aide",
       "",
     ].join("\n"));
@@ -672,15 +890,20 @@ async function main() {
     rerender();
   }
 
-  screen.key(["1"], () => toggleColumn("wait"));
-  screen.key(["2"], () => toggleColumn("departure"));
-  screen.key(["3"], () => toggleColumn("arrival"));
-  screen.key(["4"], () => toggleColumn("duration"));
+  screen.key(["S-w"], () => toggleColumn("wait"));
+  screen.key(["S-d"], () => toggleColumn("departure"));
+  screen.key(["S-r"], () => toggleColumn("arrival"));
+  screen.key(["S-u"], () => toggleColumn("duration"));
 
   // Display toggles (MAJUSCULE)
   screen.key(["S-b"], () => {
     if (getPickerOpen()) return;
     display.banner = !display.banner;
+    rerender();
+  });
+  screen.key(["S-a"], () => {
+    if (getPickerOpen()) return;
+    display.aligned = !display.aligned;
     rerender();
   });
   screen.key(["S-h"], () => {
@@ -695,15 +918,25 @@ async function main() {
     rerender();
   });
 
-  // Walk time to station
+  // Walk times
   screen.key(["+", "="], () => {
     if (getPickerOpen()) return;
-    walkMinutes++;
+    walkDeparture++;
     rerender();
   });
   screen.key(["-"], () => {
     if (getPickerOpen()) return;
-    if (walkMinutes > 0) walkMinutes--;
+    if (walkDeparture > 0) walkDeparture--;
+    rerender();
+  });
+  screen.key(["]"], () => {
+    if (getPickerOpen()) return;
+    walkArrival++;
+    rerender();
+  });
+  screen.key(["["], () => {
+    if (getPickerOpen()) return;
+    if (walkArrival > 0) walkArrival--;
     rerender();
   });
 
@@ -734,6 +967,42 @@ async function main() {
   screen.key(["a"], () => {
     if (getPickerOpen()) return;
     openPicker("Gare d'arrivée", (s) => { toStation = s; });
+  });
+
+  // Favorites
+  screen.key(["f"], () => {
+    if (getPickerOpen()) return;
+    setPickerOpen(true);
+    showFavoritesPanel(screen, isCompact(), async (action) => {
+      setPickerOpen(false);
+      if (action && action.type === "load") {
+        fromStation = action.favorite.from;
+        toStation = action.favorite.to;
+        saveConfig();
+        screen.title = `${fromStation.name} → ${toStation.name}`;
+        updateHeader();
+        await refresh();
+      }
+    });
+  });
+
+  screen.key(["S-f"], () => {
+    if (getPickerOpen()) return;
+    const exists = favorites.some(
+      (f) => f.from.id === fromStation.id && f.to.id === toStation.id
+    );
+    if (!exists) {
+      favorites.push({ from: { ...fromStation }, to: { ...toStation } });
+      saveConfig();
+    }
+    // Temporary feedback in footer
+    const origContent = footer.getContent();
+    footer.setContent(`\n {green-fg}${exists ? "Déjà en favoris" : "Favori ajouté !"}{/green-fg}  ${fromStation.name} → ${toStation.name}`);
+    screen.render();
+    setTimeout(() => {
+      updateFooter(departures.length, fmtClock());
+      screen.render();
+    }, 2000);
   });
 
   // Clock + live wait time update
