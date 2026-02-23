@@ -42,13 +42,13 @@ Exportez votre cle API puis lancez l'application :
 
 ```bash
 export TRAIN_API_KEY=votre_cle_api
-node src/index.js
+node index.js
 ```
 
 Ou en une seule ligne :
 
 ```bash
-TRAIN_API_KEY=votre_cle_api node src/index.js
+TRAIN_API_KEY=votre_cle_api node index.js
 ```
 
 ### Raccourcis clavier
@@ -86,6 +86,10 @@ TRAIN_API_KEY=votre_cle_api node src/index.js
 ## Configuration
 
 Un fichier `config.json` est genere automatiquement a la racine du projet. Il sauvegarde vos preferences (stations, affichage, favoris). Ce fichier est ignore par git.
+
+## Poids
+
+~1.8 Mo une fois installe (source + node_modules).
 
 ## Licence
 
