@@ -100,24 +100,35 @@ private fun Ready(state: WidgetState.Ready) {
 
 @Composable
 private fun Header(state: WidgetState.Ready) {
-    Row(
-        modifier = GlanceModifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Vertical.CenterVertically,
-    ) {
-        Text(
-            text = state.label,
-            style = TextStyle(
-                color = GlanceTheme.colors.onSurface,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-            ),
-            maxLines = 1,
-            modifier = GlanceModifier.defaultWeight(),
-        )
-        Text(
-            text = if (state.stale) "! ${state.fetchedAt.asClock()}" else state.fetchedAt.asClock(),
-            style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
-        )
+    Column(modifier = GlanceModifier.fillMaxWidth()) {
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Vertical.CenterVertically,
+        ) {
+            Text(
+                text = state.label,
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                maxLines = 1,
+                modifier = GlanceModifier.defaultWeight(),
+            )
+            Text(
+                text = if (state.stale) "! ${state.fetchedAt.asClock()}" else state.fetchedAt.asClock(),
+                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
+            )
+        }
+
+        // Sans ca, le choix du trajet serait une boite noire.
+        if (state.ruleName != null) {
+            Text(
+                text = state.ruleName,
+                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 10.sp),
+                maxLines = 1,
+            )
+        }
     }
 }
 

@@ -59,4 +59,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.kotlinx.serialization.json)
+
+    // Le moteur de regles est du Kotlin pur : il se teste sans appareil.
+    testImplementation(libs.junit)
 }

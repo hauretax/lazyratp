@@ -33,10 +33,14 @@ object NavitiaApi {
                 val p = places.getJSONObject(i)
                 if (p.optString("embedded_type") != "stop_area") continue
                 val sa = p.optJSONObject("stop_area") ?: continue
+                // Navitia rend les coordonnees en chaines : {"coord": {"lat": "48.86", "lon": "2.34"}}.
+                val coord = sa.optJSONObject("coord")
                 add(
                     Station(
                         id = sa.optString("id"),
                         name = sa.optString("name"),
+                        lat = coord?.optString("lat")?.toDoubleOrNull(),
+                        lon = coord?.optString("lon")?.toDoubleOrNull(),
                         modes = sa.optJSONArray("commercial_modes")
                             ?.mapObjects { it.optString("name") }
                             ?.joinToString(", ")

@@ -8,14 +8,23 @@ data class Station(
     val name: String,
     val modes: String = "",
     val city: String = "",
+    /** Fournies par Navitia (stop_area.coord). Absentes des favoris enregistres avant leur ajout. */
+    val lat: Double? = null,
+    val lon: Double? = null,
 )
 
-/** Meme forme que les favoris du CLI : { from: {id, name}, to: {id, name} }. */
+/**
+ * Meme paire from/to que les favoris du CLI. L'identifiant est derive plutot que stocke,
+ * ce qui evite toute migration des donnees deja ecrites en DataStore.
+ */
 @Serializable
 data class Favorite(
     val from: Station,
     val to: Station,
+    /** Epoch millis. null = permanent. Un favori temporaire disparait de lui-meme. */
+    val expiresAt: Long? = null,
 ) {
+    val id: String get() = "${from.id}>${to.id}"
     val label: String get() = "${from.name} → ${to.name}"
 }
 
@@ -34,7 +43,7 @@ data class Step(
 
 @Serializable
 data class Journey(
-    /** Epoch millis, heure locale convertie. */
+    /** Epoch millis. */
     val departure: Long,
     val arrival: Long,
     /** Secondes. */

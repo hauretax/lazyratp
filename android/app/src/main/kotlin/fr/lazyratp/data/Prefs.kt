@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
+import fr.lazyratp.rules.Rule
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "lazyratp")
 
@@ -24,6 +25,7 @@ object Prefs {
     private val KEY_FAVORITES = stringPreferencesKey("favorites")
     private val KEY_SELECTED = intPreferencesKey("selected")
     private val KEY_CACHE = stringPreferencesKey("cache")
+    private val KEY_RULES = stringPreferencesKey("rules")
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -69,6 +71,21 @@ object Prefs {
 
     suspend fun setSelected(context: Context, index: Int) {
         context.dataStore.edit { it[KEY_SELECTED] = index }
+    }
+
+    /** L'ordre de la liste est la priorite : la premiere regle qui matche gagne. */
+    fun rulesFlow(context: Context): Flow<List<Rule>> =
+        context.dataStore.data.map { decodeRules(it[KEY_RULES]) }
+
+    suspend fun rules(context: Context): List<Rule> = rulesFlow(context).first()
+
+    suspend fun setRules(context: Context, value: List<Rule>) {
+        context.dataStore.edit { it[KEY_RULES] = json.encodeToString(value) }
+    }
+
+    private fun decodeRules(raw: String?): List<Rule> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching { json.decodeFromString<List<Rule>>(raw) }.getOrDefault(emptyList())
     }
 
     suspend fun cache(context: Context): WidgetCache? =
