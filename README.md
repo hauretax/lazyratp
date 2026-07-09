@@ -111,6 +111,28 @@ cd android
 Puis, sur le telephone : ouvrir LazyRATP, coller la cle API PRIM, chercher une station de depart
 et d'arrivee, ajouter le favori. Enfin, appui long sur l'ecran d'accueil > Widgets > LazyRATP.
 
+### Regles contextuelles
+
+Le widget n'affiche pas un favori fige : un moteur de regles choisit le trajet selon le moment.
+Les regles sont evaluees dans l'ordre de la liste, la premiere qui matche gagne. L'ordre est donc
+la priorite, et il se change a la main dans l'onglet Regles.
+
+Chaque condition est facultative : jours de la semaine, fenetre horaire (a cheval sur minuit si
+l'heure de fin precede celle de debut), expiration. Une regle sans aucune condition matche
+toujours ; c'est ce que fait le bouton "Epingler 24 h". Quand rien ne matche, le widget affiche
+le trajet de repli, celui coche dans l'onglet Favoris.
+
+Le widget affiche le nom de la regle retenue, faute de quoi le choix du trajet serait opaque.
+
+Une condition de lieu existe dans le modele (`PlaceCondition`), mais la localisation n'est pas
+encore acquise : `WidgetRepo` passe `location = null` et aucune regle de lieu ne peut matcher.
+
+Le moteur est une fonction pure sans dependance Android. Il se teste sans appareil :
+
+```bash
+cd android && ./gradlew test
+```
+
 ### Rafraichissement
 
 `updatePeriodMillis` d'AppWidget est plafonne a 30 minutes par la plateforme, trop lent pour des
