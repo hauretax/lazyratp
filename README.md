@@ -87,9 +87,44 @@ TRAIN_API_KEY=votre_cle_api node index.js
 
 Un fichier `config.json` est genere automatiquement a la racine du projet. Il sauvegarde vos preferences (stations, affichage, favoris). Ce fichier est ignore par git.
 
+## Widget Android
+
+Le dossier `android/` contient une application Android distincte : un widget d'ecran d'accueil
+(Kotlin + Jetpack Glance) qui affiche les prochains departs d'un trajet favori.
+
+**Les favoris ne sont pas partages avec le CLI.** Le `config.json` ci-dessus est un fichier local,
+hors de portee du telephone. L'app Android a son propre ecran de recherche de stations et sa
+propre liste de favoris, stockee en DataStore. Le telephone est la source de verite.
+
+### Build
+
+Le JDK par defaut de macOS installe via Homebrew est souvent trop recent : l'Android Gradle Plugin
+supporte le JDK 17, pas le 25. Utiliser le JDK livre avec Android Studio :
+
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+cd android
+./gradlew assembleDebug
+./gradlew installDebug   # telephone branche, debogage USB actif
+```
+
+Puis, sur le telephone : ouvrir LazyRATP, coller la cle API PRIM, chercher une station de depart
+et d'arrivee, ajouter le favori. Enfin, appui long sur l'ecran d'accueil > Widgets > LazyRATP.
+
+### Rafraichissement
+
+`updatePeriodMillis` d'AppWidget est plafonne a 30 minutes par la plateforme, trop lent pour des
+trains. Le widget se rafraichit donc via WorkManager toutes les 15 minutes (son propre plancher),
+et immediatement au tap. A ce rythme il consomme ~96 requetes par jour, tres loin du quota PRIM
+de 20 000 par jour.
+
+Si le reseau tombe, le widget affiche le dernier resultat connu prefixe d'un `!` plutot que de
+se vider.
+
 ## Poids
 
 ~1.8 Mo une fois installe (source + node_modules).
+L'APK Android de debug pese ~14 Mo (Compose, sans minification).
 
 ## Licence
 
