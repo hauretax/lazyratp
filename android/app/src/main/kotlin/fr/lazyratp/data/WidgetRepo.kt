@@ -35,13 +35,20 @@ object WidgetRepo {
      * Retombe sur le dernier cache si le reseau echoue : un widget qui affiche des
      * horaires perimes reste plus utile qu'un widget vide.
      */
-    suspend fun load(context: Context, location: LatLon? = null): WidgetState {
+    suspend fun load(context: Context, forcedLocation: LatLon? = null): WidgetState {
         val apiKey = Prefs.apiKey(context)
         if (apiKey.isBlank()) return WidgetState.NeedsKey
 
+        val rules = Prefs.rules(context)
+        val favorites = Prefs.favorites(context)
+
+        // On n'allume la localisation que si quelqu'un la reclame.
+        val needsLocation = favorites.any { it.fromHere } || rules.any { it.place != null }
+        val location = forcedLocation ?: if (needsLocation) LocationProvider.current(context) else null
+
         val resolution = RuleEngine.resolve(
-            rules = Prefs.rules(context),
-            favorites = Prefs.favorites(context),
+            rules = rules,
+            favorites = favorites,
             nowMillis = System.currentTimeMillis(),
             zone = PARIS,
             location = location,
@@ -52,14 +59,18 @@ object WidgetRepo {
         val ruleName = resolution.rule?.name?.takeIf { it.isNotBlank() }
         val display = Prefs.display(context)
 
+        // Echec ferme : sans position, un trajet "depuis ma position" n'a pas de sens.
+        val fromParam = favorite.fromParam(location)
+            ?: return WidgetState.Error(locationRefusal(context))
+
         return try {
             val journeys = when (favorite.mode) {
                 TripMode.NEXT_DEPARTURES ->
-                    NavitiaApi.fetchJourneys(apiKey, favorite.from.id, favorite.to.id, favorite.forbiddenModes)
+                    NavitiaApi.fetchJourneys(apiKey, fromParam, favorite.to.id, favorite.forbiddenModes)
 
                 // Deja triee du plus tardif au plus tot : on lit la fin de journee a rebours.
                 TripMode.LAST_JOURNEY ->
-                    NavitiaApi.fetchLastJourneys(apiKey, favorite.from.id, favorite.to.id, favorite.forbiddenModes)
+                    NavitiaApi.fetchLastJourneys(apiKey, fromParam, favorite.to.id, favorite.forbiddenModes)
             }
             val cache = WidgetCache(favorite.label, journeys, System.currentTimeMillis())
             Prefs.setCache(context, cache)
@@ -73,5 +84,12 @@ object WidgetRepo {
                 else -> WidgetState.Error(e.message ?: "Reseau indisponible")
             }
         }
+    }
+
+    /** Dire *pourquoi* la position manque : la permission, ou le releve lui-meme. */
+    private fun locationRefusal(context: Context): String = when {
+        !LocationProvider.hasForegroundPermission(context) -> "Position non autorisee"
+        !LocationProvider.hasBackgroundPermission(context) -> "Autorise la position en arriere-plan"
+        else -> "Position introuvable"
     }
 }

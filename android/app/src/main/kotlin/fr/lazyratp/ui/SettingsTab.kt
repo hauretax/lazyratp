@@ -1,5 +1,11 @@
 package fr.lazyratp.ui
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,11 +29,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import fr.lazyratp.data.ApiKey
 import fr.lazyratp.data.Display
+import fr.lazyratp.data.LocationProvider
 import fr.lazyratp.data.NavitiaApi
 import fr.lazyratp.data.Prefs
 import kotlinx.coroutines.launch
@@ -142,6 +153,10 @@ internal fun SettingsTab(apiKey: String, display: Display) {
 
         HorizontalDivider()
 
+        LocationSection()
+
+        HorizontalDivider()
+
         Text("Temps de marche", style = MaterialTheme.typography.titleMedium)
         MinutesField(
             label = "Marche jusqu'a la gare de depart",
@@ -154,6 +169,80 @@ internal fun SettingsTab(apiKey: String, display: Display) {
         Text(
             "Un train qui part dans moins que la marche au depart est estompe : " +
                 "tu ne peux plus l'attraper. La marche a l'arrivee est ajoutee a l'heure affichee.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+/**
+ * Deux permissions distinctes. Celle du premier plan s'obtient par un dialogue ;
+ * celle d'arriere-plan, exigee par le widget, ne s'obtient que dans les Reglages
+ * depuis Android 11. On ne peut donc pas la demander, seulement y conduire.
+ */
+@Composable
+private fun LocationSection() {
+    val context = LocalContext.current
+    var foreground by remember { mutableStateOf(LocationProvider.hasForegroundPermission(context)) }
+    var background by remember { mutableStateOf(LocationProvider.hasBackgroundPermission(context)) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                foreground = LocationProvider.hasForegroundPermission(context)
+                background = LocationProvider.hasBackgroundPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        foreground = LocationProvider.hasForegroundPermission(context)
+        background = LocationProvider.hasBackgroundPermission(context)
+    }
+
+    Text("Position", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Necessaire seulement pour les favoris \"depuis ma position\" et les regles " +
+            "declenchees par un lieu.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Text("Premier plan : ${if (foreground) "autorisee" else "refusee"}")
+    Text("Arriere-plan : ${if (background) "autorisee" else "refusee"}")
+
+    if (!foreground) {
+        Button(onClick = {
+            request.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                )
+            )
+        }) { Text("Autoriser la position") }
+    }
+
+    if (foreground && !background) {
+        Text(
+            "Le widget lit la position hors du premier plan. Android ne permet pas " +
+                "de l'accorder par un dialogue : choisis \"Toujours autoriser\" dans les Reglages.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(onClick = {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null),
+                )
+            )
+        }) { Text("Ouvrir les Reglages") }
+    }
+
+    if (foreground && background) {
+        Text(
+            "Sur Xiaomi, active aussi \"Demarrage auto\" et passe la batterie a " +
+                "\"Aucune restriction\" pour LazyRATP, sans quoi le rafraichissement " +
+                "de fond ne s'executera pas.",
             style = MaterialTheme.typography.bodySmall,
         )
     }

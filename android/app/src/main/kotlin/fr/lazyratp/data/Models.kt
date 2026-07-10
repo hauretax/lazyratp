@@ -1,5 +1,6 @@
 package fr.lazyratp.data
 
+import fr.lazyratp.rules.LatLon
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -39,25 +40,39 @@ data class Favorite(
     val mode: TripMode = TripMode.NEXT_DEPARTURES,
     /** Modes physiques exclus, ex. PhysicalMode.BUS. */
     val forbiddenModes: Set<String> = emptySet(),
+    /** Le depart est la position courante. [from] est alors ignore. */
+    val fromHere: Boolean = false,
     /** Epoch millis. null = permanent. Un favori temporaire disparait de lui-meme. */
     val expiresAt: Long? = null,
 ) {
     val id: String
         get() = buildString {
-            append(from.id).append('>').append(to.id)
+            append(if (fromHere) HERE else from.id).append('>').append(to.id)
             if (mode != TripMode.NEXT_DEPARTURES) append('#').append(mode.name)
             if (forbiddenModes.isNotEmpty()) append('#').append(forbiddenModes.sorted().joinToString(","))
         }
 
     val label: String
         get() = buildString {
-            append(from.name).append(" → ").append(to.name)
+            append(if (fromHere) "Ma position" else from.name).append(" → ").append(to.name)
             val tags = buildList {
                 if (mode == TripMode.LAST_JOURNEY) add("dernier")
                 if (PhysicalMode.BUS in forbiddenModes) add("sans bus")
             }
             if (tags.isNotEmpty()) append(tags.joinToString(", ", prefix = " (", postfix = ")"))
         }
+
+    /**
+     * Ce qu'on envoie a Navitia comme point de depart : un identifiant d'arret,
+     * ou des coordonnees "lon;lat" (le point-virgule doit etre encode).
+     * Rend null quand la position est exigee mais inconnue.
+     */
+    fun fromParam(location: LatLon?): String? =
+        if (fromHere) location?.let { "${it.lon}%3B${it.lat}" } else from.id
+
+    companion object {
+        const val HERE = "here"
+    }
 }
 
 @Serializable

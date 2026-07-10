@@ -43,6 +43,9 @@ import fr.lazyratp.rules.Rule
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** Place-tenant : quand fromHere est vrai, Favorite ignore ce champ. */
+private val HERE_STATION = Station(Favorite.HERE, "Ma position")
+
 @Composable
 internal fun FavoritesTab(
     apiKey: String,
@@ -55,6 +58,7 @@ internal fun FavoritesTab(
 
     var from by remember { mutableStateOf<Station?>(null) }
     var to by remember { mutableStateOf<Station?>(null) }
+    var fromHere by remember { mutableStateOf(false) }
     var lastJourney by remember { mutableStateOf(false) }
     var noBus by remember { mutableStateOf(false) }
 
@@ -71,7 +75,16 @@ internal fun FavoritesTab(
                 style = MaterialTheme.typography.bodySmall,
             )
         } else {
-            StationField("Depart", apiKey, from) { from = it }
+            CheckRow("Partir de ma position", fromHere) { fromHere = it }
+            if (fromHere) {
+                Text(
+                    "Navitia calcule lui-meme la marche jusqu'au premier arret. " +
+                        "Autorise la position dans l'onglet Parametres.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                StationField("Depart", apiKey, from) { from = it }
+            }
             StationField("Arrivee", apiKey, to) { to = it }
 
             CheckRow("Dernier trajet du jour", lastJourney) { lastJourney = it }
@@ -79,8 +92,8 @@ internal fun FavoritesTab(
 
             Button(
                 onClick = {
-                    val f = from ?: return@Button
                     val t = to ?: return@Button
+                    val f = if (fromHere) HERE_STATION else (from ?: return@Button)
                     scope.launch {
                         Prefs.addFavorite(
                             context,
@@ -89,16 +102,18 @@ internal fun FavoritesTab(
                                 to = t,
                                 mode = if (lastJourney) TripMode.LAST_JOURNEY else TripMode.NEXT_DEPARTURES,
                                 forbiddenModes = if (noBus) setOf(PhysicalMode.BUS) else emptySet(),
+                                fromHere = fromHere,
                             ),
                         )
                         from = null
                         to = null
+                        fromHere = false
                         lastJourney = false
                         noBus = false
                         refreshWidget(context)
                     }
                 },
-                enabled = from != null && to != null,
+                enabled = to != null && (fromHere || from != null),
             ) { Text("Ajouter aux favoris") }
         }
 
