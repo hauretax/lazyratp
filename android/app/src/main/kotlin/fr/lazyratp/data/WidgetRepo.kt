@@ -51,7 +51,15 @@ object WidgetRepo {
         val ruleName = resolution.rule?.name?.takeIf { it.isNotBlank() }
 
         return try {
-            val journeys = NavitiaApi.fetchJourneys(apiKey, favorite.from.id, favorite.to.id)
+            val journeys = when (favorite.mode) {
+                TripMode.NEXT_DEPARTURES ->
+                    NavitiaApi.fetchJourneys(apiKey, favorite.from.id, favorite.to.id, favorite.forbiddenModes)
+
+                TripMode.LAST_JOURNEY ->
+                    listOfNotNull(
+                        NavitiaApi.fetchLastJourney(apiKey, favorite.from.id, favorite.to.id, favorite.forbiddenModes)
+                    )
+            }
             val cache = WidgetCache(favorite.label, journeys, System.currentTimeMillis())
             Prefs.setCache(context, cache)
             WidgetState.Ready(cache.favoriteLabel, ruleName, cache.journeys, cache.fetchedAt, stale = false)

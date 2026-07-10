@@ -51,7 +51,9 @@ object Prefs {
     suspend fun addFavorite(context: Context, favorite: Favorite) {
         context.dataStore.edit { prefs ->
             val current = decodeFavorites(prefs[KEY_FAVORITES])
-            if (current.none { it.from.id == favorite.from.id && it.to.id == favorite.to.id }) {
+            // L'identifiant couvre gares, mode et exclusions : deux requetes distinctes
+            // sur les memes gares coexistent.
+            if (current.none { it.id == favorite.id }) {
                 prefs[KEY_FAVORITES] = json.encodeToString(current + favorite)
             }
         }

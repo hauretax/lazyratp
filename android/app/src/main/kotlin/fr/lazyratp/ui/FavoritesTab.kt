@@ -1,6 +1,7 @@
 package fr.lazyratp.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -28,17 +30,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import fr.lazyratp.data.Favorite
 import fr.lazyratp.data.NavitiaApi
+import fr.lazyratp.data.PhysicalMode
 import fr.lazyratp.data.Prefs
 import fr.lazyratp.data.Station
+import fr.lazyratp.data.TripMode
+import fr.lazyratp.rules.PinRule
 import fr.lazyratp.rules.Rule
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.UUID
-
-private const val ONE_DAY_MILLIS = 24L * 60 * 60 * 1000
 
 @Composable
 internal fun FavoritesTab(
@@ -50,9 +53,10 @@ internal fun FavoritesTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var keyInput by remember(apiKey) { mutableStateOf(apiKey) }
     var from by remember { mutableStateOf<Station?>(null) }
     var to by remember { mutableStateOf<Station?>(null) }
+    var lastJourney by remember { mutableStateOf(false) }
+    var noBus by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -60,43 +64,37 @@ internal fun FavoritesTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Cle API PRIM", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
-            value = keyInput,
-            onValueChange = { keyInput = it },
-            singleLine = true,
-            label = { Text("apiKey") },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Button(
-            onClick = {
-                scope.launch {
-                    Prefs.setApiKey(context, keyInput)
-                    refreshWidget(context)
-                }
-            },
-            enabled = keyInput.isNotBlank() && keyInput != apiKey,
-        ) { Text("Enregistrer la cle") }
-
-        HorizontalDivider()
-
         Text("Nouveau favori", style = MaterialTheme.typography.titleMedium)
         if (apiKey.isBlank()) {
             Text(
-                "Saisis d'abord ta cle API pour rechercher des stations.",
+                "Enregistre d'abord ta cle API dans l'onglet Parametres.",
                 style = MaterialTheme.typography.bodySmall,
             )
         } else {
             StationField("Depart", apiKey, from) { from = it }
             StationField("Arrivee", apiKey, to) { to = it }
+
+            CheckRow("Dernier trajet du jour", lastJourney) { lastJourney = it }
+            CheckRow("Sans bus (exclut aussi le Noctilien)", noBus) { noBus = it }
+
             Button(
                 onClick = {
                     val f = from ?: return@Button
                     val t = to ?: return@Button
                     scope.launch {
-                        Prefs.addFavorite(context, Favorite(f, t))
+                        Prefs.addFavorite(
+                            context,
+                            Favorite(
+                                from = f,
+                                to = t,
+                                mode = if (lastJourney) TripMode.LAST_JOURNEY else TripMode.NEXT_DEPARTURES,
+                                forbiddenModes = if (noBus) setOf(PhysicalMode.BUS) else emptySet(),
+                            ),
+                        )
                         from = null
                         to = null
+                        lastJourney = false
+                        noBus = false
                         refreshWidget(context)
                     }
                 },
@@ -130,20 +128,18 @@ internal fun FavoritesTab(
                             Text(favorite.label, modifier = Modifier.weight(1f))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            // Une regle sans condition, en tete de liste : elle gagne
-                            // jusqu'a son expiration.
+                            // Bascule idempotente : l'identifiant de l'epingle est derive
+                            // du favori, donc reappuyer la retire au lieu d'en creer une seconde.
+                            val pinned = PinRule.isActive(rules, favorite.id, System.currentTimeMillis())
                             TextButton(onClick = {
                                 scope.launch {
-                                    val pin = Rule(
-                                        id = UUID.randomUUID().toString(),
-                                        favoriteId = favorite.id,
-                                        name = "Epingle 24 h",
-                                        expiresAt = System.currentTimeMillis() + ONE_DAY_MILLIS,
+                                    Prefs.setRules(
+                                        context,
+                                        PinRule.toggle(rules, favorite.id, System.currentTimeMillis()),
                                     )
-                                    Prefs.setRules(context, listOf(pin) + rules)
                                     refreshWidget(context)
                                 }
-                            }) { Text("Epingler 24 h") }
+                            }) { Text(if (pinned) "Desepingler" else "Epingler 24 h") }
 
                             Spacer(Modifier.weight(1f))
 

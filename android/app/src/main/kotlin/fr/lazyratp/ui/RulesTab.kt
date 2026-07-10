@@ -233,10 +233,7 @@ private fun RuleEditor(
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = allDay, onCheckedChange = { allDay = it })
-            Text("Toute la journee")
-        }
+        CheckRow("Toute la journee", allDay) { allDay = it }
         if (!allDay) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -265,10 +262,7 @@ private fun RuleEditor(
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = expires, onCheckedChange = { expires = it })
-            Text("Expire")
-        }
+        CheckRow("Expire", expires) { expires = it }
         if (expires) {
             OutlinedTextField(
                 value = hoursText,

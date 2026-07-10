@@ -6,10 +6,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -38,6 +39,7 @@ internal suspend fun refreshWidget(context: Context) {
     NextTrainsWidget().updateAll(context)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfigScreen() {
     val context = LocalContext.current
@@ -50,14 +52,16 @@ private fun ConfigScreen() {
     var tab by remember { mutableIntStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = tab) {
+        PrimaryTabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Favoris") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Regles") })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Parametres") })
         }
 
         when (tab) {
             0 -> FavoritesTab(apiKey = apiKey, favorites = favorites, selected = selected, rules = rules)
-            else -> RulesTab(favorites = favorites, rules = rules)
+            1 -> RulesTab(favorites = favorites, rules = rules)
+            else -> SettingsTab(apiKey = apiKey)
         }
     }
 }

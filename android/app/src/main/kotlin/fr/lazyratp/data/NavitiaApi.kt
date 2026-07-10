@@ -7,6 +7,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -56,12 +57,78 @@ object NavitiaApi {
         }
     }
 
-    suspend fun fetchJourneys(apiKey: String, from: String, to: String): List<Journey> = withContext(Dispatchers.IO) {
-        val dt = LocalDateTime.now(PARIS).format(NAVITIA_DT)
-        val body = httpGet("$BASE/journeys?from=$from&to=$to&datetime=$dt&count=8&min_nb_journeys=5", apiKey)
-        val journeys = JSONObject(body).optJSONArray("journeys") ?: return@withContext emptyList()
+    /**
+     * Eprouve une cle contre l'API reelle. Rend null si elle marche, le motif du refus sinon.
+     * On ne remplace jamais une cle valide par une cle non verifiee.
+     */
+    suspend fun validateKey(apiKey: String): String? = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext "Cle vide"
+        try {
+            httpGet("$BASE/places?q=chatelet&type[]=stop_area&count=1", apiKey)
+            null
+        } catch (e: NavitiaException) {
+            e.message
+        } catch (e: Exception) {
+            "Reseau indisponible"
+        }
+    }
 
-        buildList {
+    /** Les prochains trajets au depart de maintenant. */
+    suspend fun fetchJourneys(
+        apiKey: String,
+        from: String,
+        to: String,
+        forbiddenModes: Set<String> = emptySet(),
+    ): List<Journey> = withContext(Dispatchers.IO) {
+        val dt = LocalDateTime.now(PARIS).format(NAVITIA_DT)
+        val all = journeys(
+            "$BASE/journeys?from=$from&to=$to&datetime=$dt&count=8&min_nb_journeys=5${forbidden(forbiddenModes)}",
+            apiKey,
+        )
+        // Navitia propose une marche a pied quand rien ne circule. Le widget ne sait pas
+        // l'afficher, mais mieux vaut la montrer que rien.
+        all.filter { it.steps.isNotEmpty() }.ifEmpty { all }
+    }
+
+    /**
+     * Le dernier trajet du jour de service. Voir [LastJourney] : Navitia n'expose pas
+     * cette notion, on la reconstruit en montant la borne d'arrivee par paliers.
+     */
+    suspend fun fetchLastJourney(
+        apiKey: String,
+        from: String,
+        to: String,
+        forbiddenModes: Set<String> = emptySet(),
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Journey? = withContext(Dispatchers.IO) {
+        LastJourney.find(
+            firstBound = ServiceDay.firstArrivalBound(nowMillis, PARIS),
+            lastBound = ServiceDay.endOfService(nowMillis, PARIS),
+        ) { bound ->
+            val dt = NAVITIA_DT.format(Instant.ofEpochMilli(bound).atZone(PARIS))
+            try {
+                journeys(
+                    "$BASE/journeys?from=$from&to=$to&datetime=$dt&datetime_represents=arrival&count=5${forbidden(forbiddenModes)}",
+                    apiKey,
+                )
+                    // Une marche a pied n'est pas un trajet : elle existe a toute heure et
+                    // empecherait la saturation de jamais survenir.
+                    .filter { it.steps.isNotEmpty() }
+            } catch (e: NavitiaException) {
+                // 404 no_solution : la borne depasse la fin de service. C'est une reponse, pas une panne.
+                if (e.code == 404) emptyList() else throw e
+            }
+        }
+    }
+
+    private fun forbidden(modes: Set<String>): String =
+        modes.joinToString("") { "&forbidden_uris[]=$it" }
+
+    private fun journeys(url: String, apiKey: String): List<Journey> {
+        val body = httpGet(url, apiKey)
+        val journeys = JSONObject(body).optJSONArray("journeys") ?: return emptyList()
+
+        return buildList {
             for (i in 0 until journeys.length()) {
                 val j = journeys.getJSONObject(i)
                 val sections = j.optJSONArray("sections") ?: JSONArray()

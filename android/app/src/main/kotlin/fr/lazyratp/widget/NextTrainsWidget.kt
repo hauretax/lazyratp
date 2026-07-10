@@ -61,7 +61,7 @@ private fun Body(state: WidgetState) {
             .clickable(actionRunCallback<RefreshAction>()),
     ) {
         when (state) {
-            WidgetState.NeedsKey -> Hint("Ouvre LazyRATP\net saisis ta cle API PRIM")
+            WidgetState.NeedsKey -> Hint("Ouvre LazyRATP > Parametres\net saisis ta cle API PRIM")
             WidgetState.NeedsFavorite -> Hint("Aucun favori.\nAjoute un trajet dans l'app")
             is WidgetState.Error -> Hint(state.message + "\nAppuie pour reessayer")
             is WidgetState.Ready -> Ready(state)
