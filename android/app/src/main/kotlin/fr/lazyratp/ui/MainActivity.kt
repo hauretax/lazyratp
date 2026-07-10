@@ -4,8 +4,10 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
@@ -28,6 +30,9 @@ import fr.lazyratp.widget.NextTrainsWidget
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Depuis Android 15, cibler l'API 35+ impose le bord a bord. Sans cela le
+        // systeme dessine par-dessus, mais le contenu passe sous la barre d'etat.
+        enableEdgeToEdge()
         setContent {
             MaterialTheme {
                 Surface { ConfigScreen() }
@@ -53,7 +58,13 @@ private fun ConfigScreen() {
 
     var tab by remember { mutableIntStateOf(0) }
 
-    Column(Modifier.fillMaxSize()) {
+    // safeDrawing couvre la barre d'etat, la barre de navigation ET la decoupe de
+    // la camera : sur un Pixel, les onglets passaient sous le poincon.
+    Column(
+        Modifier
+            .fillMaxSize()
+            .safeDrawingPadding(),
+    ) {
         PrimaryTabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Favoris") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Regles") })
