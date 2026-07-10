@@ -56,11 +56,26 @@ internal fun FavoritesTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var from by remember { mutableStateOf<Station?>(null) }
-    var to by remember { mutableStateOf<Station?>(null) }
-    var fromHere by remember { mutableStateOf(false) }
-    var lastJourney by remember { mutableStateOf(false) }
-    var noBus by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Int?>(null) }
+
+    // Edition : le formulaire remplit l'ecran, comme l'editeur de regles.
+    val editIndex = editing
+    if (editIndex != null && editIndex in favorites.indices) {
+        FavoriteForm(
+            apiKey = apiKey,
+            initial = favorites[editIndex],
+            submitLabel = "Enregistrer",
+            onCancel = { editing = null },
+            onSubmit = { favorite ->
+                scope.launch {
+                    Prefs.replaceFavorite(context, editIndex, favorite)
+                    refreshWidget(context)
+                }
+                editing = null
+            },
+        )
+        return
+    }
 
     Column(
         modifier = Modifier
@@ -75,46 +90,18 @@ internal fun FavoritesTab(
                 style = MaterialTheme.typography.bodySmall,
             )
         } else {
-            CheckRow("Partir de ma position", fromHere) { fromHere = it }
-            if (fromHere) {
-                Text(
-                    "Navitia calcule lui-meme la marche jusqu'au premier arret. " +
-                        "Autorise la position dans l'onglet Parametres.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            } else {
-                StationField("Depart", apiKey, from) { from = it }
-            }
-            StationField("Arrivee", apiKey, to) { to = it }
-
-            CheckRow("Dernier trajet du jour", lastJourney) { lastJourney = it }
-            CheckRow("Sans bus (exclut aussi le Noctilien)", noBus) { noBus = it }
-
-            Button(
-                onClick = {
-                    val t = to ?: return@Button
-                    val f = if (fromHere) HERE_STATION else (from ?: return@Button)
+            FavoriteForm(
+                apiKey = apiKey,
+                initial = null,
+                submitLabel = "Ajouter aux favoris",
+                onCancel = null,
+                onSubmit = { favorite ->
                     scope.launch {
-                        Prefs.addFavorite(
-                            context,
-                            Favorite(
-                                from = f,
-                                to = t,
-                                mode = if (lastJourney) TripMode.LAST_JOURNEY else TripMode.NEXT_DEPARTURES,
-                                forbiddenModes = if (noBus) setOf(PhysicalMode.BUS) else emptySet(),
-                                fromHere = fromHere,
-                            ),
-                        )
-                        from = null
-                        to = null
-                        fromHere = false
-                        lastJourney = false
-                        noBus = false
+                        Prefs.addFavorite(context, favorite)
                         refreshWidget(context)
                     }
                 },
-                enabled = to != null && (fromHere || from != null),
-            ) { Text("Ajouter aux favoris") }
+            )
         }
 
         HorizontalDivider()
@@ -142,7 +129,10 @@ internal fun FavoritesTab(
                             )
                             Text(favorite.label, modifier = Modifier.weight(1f))
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             // Bascule idempotente : l'identifiant de l'epingle est derive
                             // du favori, donc reappuyer la retire au lieu d'en creer une seconde.
                             val pinned = PinRule.isActive(rules, favorite.id, System.currentTimeMillis())
@@ -158,6 +148,7 @@ internal fun FavoritesTab(
 
                             Spacer(Modifier.weight(1f))
 
+                            TextButton(onClick = { editing = index }) { Text("Modifier") }
                             TextButton(onClick = {
                                 scope.launch {
                                     Prefs.removeFavorite(context, index)
@@ -177,6 +168,81 @@ internal fun FavoritesTab(
         ) { Text("Rafraichir le widget") }
 
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/**
+ * Formulaire d'un favori, partage entre l'ajout et l'edition. Pre-rempli depuis
+ * [initial] a l'edition, vide a l'ajout.
+ */
+@Composable
+private fun FavoriteForm(
+    apiKey: String,
+    initial: Favorite?,
+    submitLabel: String,
+    onCancel: (() -> Unit)?,
+    onSubmit: (Favorite) -> Unit,
+) {
+    var from by remember(initial) { mutableStateOf(if (initial?.fromHere == true) null else initial?.from) }
+    var to by remember(initial) { mutableStateOf(initial?.to) }
+    var fromHere by remember(initial) { mutableStateOf(initial?.fromHere ?: false) }
+    var lastJourney by remember(initial) { mutableStateOf(initial?.mode == TripMode.LAST_JOURNEY) }
+    var noBus by remember(initial) { mutableStateOf(initial != null && PhysicalMode.BUS in initial.forbiddenModes) }
+
+    val body: @Composable () -> Unit = {
+        CheckRow("Partir de ma position", fromHere) { fromHere = it }
+        if (fromHere) {
+            Text(
+                "Navitia calcule lui-meme la marche jusqu'au premier arret. " +
+                    "Autorise la position dans l'onglet Parametres.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        } else {
+            StationField("Depart", apiKey, from) { from = it }
+        }
+        StationField("Arrivee", apiKey, to) { to = it }
+
+        CheckRow("Dernier trajet du jour", lastJourney) { lastJourney = it }
+        CheckRow("Sans bus (exclut aussi le Noctilien)", noBus) { noBus = it }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (onCancel != null) {
+                TextButton(onClick = onCancel) { Text("Annuler") }
+            }
+            Button(
+                onClick = {
+                    val t = to ?: return@Button
+                    val f = if (fromHere) HERE_STATION else (from ?: return@Button)
+                    onSubmit(
+                        Favorite(
+                            from = f,
+                            to = t,
+                            mode = if (lastJourney) TripMode.LAST_JOURNEY else TripMode.NEXT_DEPARTURES,
+                            forbiddenModes = if (noBus) setOf(PhysicalMode.BUS) else emptySet(),
+                            fromHere = fromHere,
+                        )
+                    )
+                },
+                enabled = to != null && (fromHere || from != null),
+            ) { Text(submitLabel) }
+        }
+    }
+
+    // A l'edition, le formulaire occupe l'ecran et defile ; a l'ajout, il s'insere
+    // dans la colonne deja defilante de l'onglet.
+    if (onCancel != null) {
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Modifier le favori", style = MaterialTheme.typography.titleMedium)
+            body()
+            Spacer(Modifier.height(24.dp))
+        }
+    } else {
+        body()
     }
 }
 

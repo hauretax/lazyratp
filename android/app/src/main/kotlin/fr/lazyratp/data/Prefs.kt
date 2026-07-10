@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import fr.lazyratp.rules.Rule
+import fr.lazyratp.rules.repointFavorite
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "lazyratp")
 
@@ -56,6 +57,27 @@ object Prefs {
             // sur les memes gares coexistent.
             if (current.none { it.id == favorite.id }) {
                 prefs[KEY_FAVORITES] = json.encodeToString(current + favorite)
+            }
+        }
+    }
+
+    /**
+     * Remplace un favori et recable ses regles, puisque modifier un favori change son id.
+     * Ne fait rien si le nouvel id entre en collision avec un autre favori existant.
+     */
+    suspend fun replaceFavorite(context: Context, index: Int, favorite: Favorite) {
+        context.dataStore.edit { prefs ->
+            val current = decodeFavorites(prefs[KEY_FAVORITES]).toMutableList()
+            if (index !in current.indices) return@edit
+            if (current.withIndex().any { (i, f) -> i != index && f.id == favorite.id }) return@edit
+
+            val oldId = current[index].id
+            current[index] = favorite
+            prefs[KEY_FAVORITES] = json.encodeToString(current.toList())
+
+            if (oldId != favorite.id) {
+                val rules = decodeRules(prefs[KEY_RULES]).repointFavorite(oldId, favorite.id)
+                prefs[KEY_RULES] = json.encodeToString(rules)
             }
         }
     }
