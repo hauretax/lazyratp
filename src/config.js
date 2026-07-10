@@ -4,8 +4,10 @@ const state = require("./state");
 
 const CONFIG_PATH = path.join(__dirname, "..", "config.json");
 
+// L'ancien id de La Ferté (63498) a disparu du référentiel IDFM : l'API répond
+// unknown_object, et le premier lancement échouait donc sur "API error: 404".
 const DEFAULTS = {
-  from: { id: "stop_area:IDFM:63498", name: "La Ferté-sous-Jouarre" },
+  from: { id: "stop_area:IDFM:68918", name: "La Ferté-sous-Jouarre" },
   to: { id: "stop_area:IDFM:474151", name: "Châtelet les Halles" },
 };
 
