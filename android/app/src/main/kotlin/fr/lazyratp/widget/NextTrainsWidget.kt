@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionRunCallback
@@ -27,9 +28,11 @@ import androidx.glance.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.lazyratp.data.Journey
+import fr.lazyratp.data.LineBadge
 import fr.lazyratp.data.WaitLabel
 import fr.lazyratp.data.WidgetRepo
 import fr.lazyratp.data.WidgetState
+import fr.lazyratp.ui.MainActivity
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -54,16 +57,18 @@ private fun Long.asClock(): String =
 
 @Composable
 private fun Body(state: WidgetState) {
+    // Appuyer sur le widget ouvre l'app. Le rafraichissement a son propre bouton :
+    // WorkManager s'en charge de toute facon toutes les 15 minutes.
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(GlanceTheme.colors.widgetBackground)
             .padding(12.dp)
-            .clickable(actionRunCallback<RefreshAction>()),
+            .clickable(actionStartActivity<MainActivity>()),
     ) {
         when (state) {
-            WidgetState.NeedsKey -> Hint("Ouvre LazyRATP > Parametres\net saisis ta cle API PRIM")
-            WidgetState.NeedsFavorite -> Hint("Aucun favori.\nAjoute un trajet dans l'app")
+            WidgetState.NeedsKey -> Hint("Appuie pour ouvrir LazyRATP\net saisir ta cle API PRIM")
+            WidgetState.NeedsFavorite -> Hint("Aucun favori.\nAppuie pour en ajouter")
             is WidgetState.Error -> Hint(state.message + "\nAppuie pour reessayer")
             is WidgetState.Ready -> Ready(state)
         }
@@ -120,6 +125,12 @@ private fun Header(state: WidgetState.Ready) {
                 text = if (state.stale) "! ${state.fetchedAt.asClock()}" else state.fetchedAt.asClock(),
                 style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
             )
+            Spacer(GlanceModifier.width(8.dp))
+            Text(
+                text = "⟳",
+                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp),
+                modifier = GlanceModifier.clickable(actionRunCallback<RefreshAction>()),
+            )
         }
 
         // Sans ca, le choix du trajet serait une boite noire.
@@ -158,9 +169,10 @@ private fun JourneyRow(journey: Journey) {
             ),
             modifier = GlanceModifier.defaultWeight(),
         )
+        // Le chemin : lettre pour le RER et le Transilien, chiffre cercle pour le metro.
         Text(
-            text = journey.dest,
-            style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
+            text = LineBadge.route(journey.steps).ifEmpty { journey.dest },
+            style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 12.sp),
             maxLines = 1,
         )
     }

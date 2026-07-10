@@ -87,11 +87,17 @@ data class Journey(
 ) {
     val code: String get() = steps.firstOrNull()?.code.orEmpty()
 
+    /**
+     * Trois lignes empruntees font deux correspondances, pas trois.
+     * On lit nb_transfers plutot que de compter les troncons : le CLI compte les
+     * troncons (format.js) et se trompe donc d'un.
+     */
     val dest: String
         get() = when {
             steps.isEmpty() -> ""
-            steps.size == 1 -> steps.first().direction
-            else -> "${steps.size} corresp."
+            transfers <= 0 -> steps.first().direction
+            transfers == 1 -> "1 corresp."
+            else -> "$transfers corresp."
         }
 }
 

@@ -73,6 +73,15 @@ object NavitiaApi {
         }
     }
 
+    /** Ce qui tient sur le widget. */
+    private const val DISPLAY_COUNT = 6
+
+    /**
+     * On demande large : Navitia rend plusieurs variantes du meme depart
+     * (best, comfort, rapid...), et la deduplication en supprime la plupart.
+     */
+    private const val FETCH_COUNT = 12
+
     /** Les prochains trajets au depart de maintenant. */
     suspend fun fetchJourneys(
         apiKey: String,
@@ -82,16 +91,17 @@ object NavitiaApi {
     ): List<Journey> = withContext(Dispatchers.IO) {
         val dt = LocalDateTime.now(PARIS).format(NAVITIA_DT)
         val all = journeys(
-            "$BASE/journeys?from=$from&to=$to&datetime=$dt&count=8&min_nb_journeys=5${forbidden(forbiddenModes)}",
+            "$BASE/journeys?from=$from&to=$to&datetime=$dt" +
+                "&count=$FETCH_COUNT&min_nb_journeys=$DISPLAY_COUNT${forbidden(forbiddenModes)}",
             apiKey,
         )
         // Navitia propose une marche a pied quand rien ne circule. Le widget ne sait pas
         // l'afficher, mais mieux vaut la montrer que rien.
-        all.filter { it.steps.isNotEmpty() }.ifEmpty { all }
+        all.filter { it.steps.isNotEmpty() }
+            .ifEmpty { all }
+            .dedupeByDeparture()
+            .take(DISPLAY_COUNT)
     }
-
-    /** Autant de trajets de fin de journee qu'il en tient sur le widget. */
-    private const val LAST_JOURNEY_COUNT = 6
 
     /**
      * La fin du jour de service : les derniers trajets, du plus tardif au plus tot.
@@ -113,17 +123,19 @@ object NavitiaApi {
             try {
                 journeys(
                     "$BASE/journeys?from=$from&to=$to&datetime=$dt&datetime_represents=arrival" +
-                        "&count=$LAST_JOURNEY_COUNT${forbidden(forbiddenModes)}",
+                        "&count=$FETCH_COUNT${forbidden(forbiddenModes)}",
                     apiKey,
                 )
                     // Une marche a pied n'est pas un trajet : elle existe a toute heure et
                     // empecherait la saturation de jamais survenir.
                     .filter { it.steps.isNotEmpty() }
+                    .dedupeByDeparture()
             } catch (e: NavitiaException) {
                 // 404 no_solution : la borne depasse la fin de service. C'est une reponse, pas une panne.
                 if (e.code == 404) emptyList() else throw e
             }
         }
+            .take(DISPLAY_COUNT)
     }
 
     private fun forbidden(modes: Set<String>): String =
