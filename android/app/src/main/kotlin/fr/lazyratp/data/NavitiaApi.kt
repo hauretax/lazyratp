@@ -106,6 +106,15 @@ object NavitiaApi {
      */
     private const val FETCH_COUNT = 12
 
+    /**
+     * Temps reel plutot que theorique. Sans ca, Navitia repond en base_schedule et
+     * marque NO_SERVICE tout trajet touche par un avis de travaux planifie, meme quand
+     * le train circule reellement : pendant les travaux d'ete de la ligne P, chaque
+     * depart s'affichait "supprime" alors qu'il etait bien la. En realtime, seuls les
+     * trajets reellement annules restent NO_SERVICE, et les horaires refletent les retards.
+     */
+    private const val REALTIME = "&data_freshness=realtime"
+
     /** Les prochains trajets au depart de maintenant. */
     suspend fun fetchJourneys(
         apiKey: String,
@@ -116,7 +125,7 @@ object NavitiaApi {
         val dt = LocalDateTime.now(PARIS).format(NAVITIA_DT)
         val all = journeys(
             "$BASE/journeys?from=$from&to=$to&datetime=$dt" +
-                "&count=$FETCH_COUNT&min_nb_journeys=$DISPLAY_COUNT${forbidden(forbiddenModes)}",
+                "&count=$FETCH_COUNT&min_nb_journeys=$DISPLAY_COUNT${forbidden(forbiddenModes)}$REALTIME",
             apiKey,
         )
         // Navitia propose une marche a pied quand rien ne circule. Le widget ne sait pas
@@ -147,7 +156,7 @@ object NavitiaApi {
             try {
                 journeys(
                     "$BASE/journeys?from=$from&to=$to&datetime=$dt&datetime_represents=arrival" +
-                        "&count=$FETCH_COUNT${forbidden(forbiddenModes)}",
+                        "&count=$FETCH_COUNT${forbidden(forbiddenModes)}$REALTIME",
                     apiKey,
                 )
                     // Une marche a pied n'est pas un trajet : elle existe a toute heure et

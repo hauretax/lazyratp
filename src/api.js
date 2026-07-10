@@ -42,7 +42,10 @@ async function fetchJourneys() {
   const dt = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   const from = state.fromStation.id;
   const to = state.toStation.id;
-  const url = `${JOURNEYS_URL}?from=${from}&to=${to}&datetime=${dt}&count=8&min_nb_journeys=5`;
+  // data_freshness=realtime : sans ca Navitia repond en horaire theorique et marque
+  // NO_SERVICE tout trajet touche par un avis de travaux planifie, meme quand le train
+  // circule. En temps reel, seuls les trajets reellement annules sont NO_SERVICE.
+  const url = `${JOURNEYS_URL}?from=${from}&to=${to}&datetime=${dt}&count=8&min_nb_journeys=5&data_freshness=realtime`;
 
   const res = await fetch(url, { headers: { apiKey: API_KEY } });
   if (!res.ok) throw new Error(`API error: ${res.status}`);
