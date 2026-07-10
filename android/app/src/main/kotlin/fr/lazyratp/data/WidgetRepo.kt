@@ -20,6 +20,7 @@ sealed interface WidgetState {
         val fetchedAt: Long,
         /** Vrai quand l'appel reseau a echoue et qu'on affiche le dernier cache connu. */
         val stale: Boolean,
+        val display: Display,
     ) : WidgetState
 
     data class Error(val message: String) : WidgetState
@@ -49,6 +50,7 @@ object WidgetRepo {
 
         val favorite = resolution.favorite
         val ruleName = resolution.rule?.name?.takeIf { it.isNotBlank() }
+        val display = Prefs.display(context)
 
         return try {
             val journeys = when (favorite.mode) {
@@ -61,12 +63,12 @@ object WidgetRepo {
             }
             val cache = WidgetCache(favorite.label, journeys, System.currentTimeMillis())
             Prefs.setCache(context, cache)
-            WidgetState.Ready(cache.favoriteLabel, ruleName, cache.journeys, cache.fetchedAt, stale = false)
+            WidgetState.Ready(cache.favoriteLabel, ruleName, cache.journeys, cache.fetchedAt, false, display)
         } catch (e: Exception) {
             val cached = Prefs.cache(context)
             when {
                 cached != null && cached.favoriteLabel == favorite.label ->
-                    WidgetState.Ready(cached.favoriteLabel, ruleName, cached.journeys, cached.fetchedAt, stale = true)
+                    WidgetState.Ready(cached.favoriteLabel, ruleName, cached.journeys, cached.fetchedAt, true, display)
 
                 else -> WidgetState.Error(e.message ?: "Reseau indisponible")
             }

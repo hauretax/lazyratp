@@ -26,6 +26,7 @@ object Prefs {
     private val KEY_SELECTED = intPreferencesKey("selected")
     private val KEY_CACHE = stringPreferencesKey("cache")
     private val KEY_RULES = stringPreferencesKey("rules")
+    private val KEY_DISPLAY = stringPreferencesKey("display")
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -73,6 +74,20 @@ object Prefs {
 
     suspend fun setSelected(context: Context, index: Int) {
         context.dataStore.edit { it[KEY_SELECTED] = index }
+    }
+
+    fun displayFlow(context: Context): Flow<Display> =
+        context.dataStore.data.map { decodeDisplay(it[KEY_DISPLAY]) }
+
+    suspend fun display(context: Context): Display = displayFlow(context).first()
+
+    suspend fun setDisplay(context: Context, value: Display) {
+        context.dataStore.edit { it[KEY_DISPLAY] = json.encodeToString(value) }
+    }
+
+    private fun decodeDisplay(raw: String?): Display {
+        if (raw.isNullOrBlank()) return Display()
+        return runCatching { json.decodeFromString<Display>(raw) }.getOrDefault(Display())
     }
 
     /** L'ordre de la liste est la priorite : la premiere regle qui matche gagne. */

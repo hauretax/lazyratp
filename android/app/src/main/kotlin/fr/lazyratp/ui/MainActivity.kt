@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.glance.appwidget.updateAll
+import fr.lazyratp.data.Display
 import fr.lazyratp.data.Prefs
 import fr.lazyratp.widget.NextTrainsWidget
 
@@ -48,6 +49,7 @@ private fun ConfigScreen() {
     val favorites by Prefs.favoritesFlow(context).collectAsState(initial = emptyList())
     val selected by Prefs.selectedFlow(context).collectAsState(initial = 0)
     val rules by Prefs.rulesFlow(context).collectAsState(initial = emptyList())
+    val display by Prefs.displayFlow(context).collectAsState(initial = Display())
 
     var tab by remember { mutableIntStateOf(0) }
 
@@ -61,7 +63,7 @@ private fun ConfigScreen() {
         when (tab) {
             0 -> FavoritesTab(apiKey = apiKey, favorites = favorites, selected = selected, rules = rules)
             1 -> RulesTab(favorites = favorites, rules = rules)
-            else -> SettingsTab(apiKey = apiKey)
+            else -> SettingsTab(apiKey = apiKey, display = display)
         }
     }
 }

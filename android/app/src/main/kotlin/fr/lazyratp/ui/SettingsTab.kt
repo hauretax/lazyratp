@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -21,17 +22,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import fr.lazyratp.data.ApiKey
+import fr.lazyratp.data.Display
 import fr.lazyratp.data.NavitiaApi
 import fr.lazyratp.data.Prefs
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun SettingsTab(apiKey: String) {
+internal fun SettingsTab(apiKey: String, display: Display) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    fun save(next: Display) = scope.launch {
+        Prefs.setDisplay(context, next)
+        refreshWidget(context)
+    }
 
     // Sans cle enregistree, on ouvre directement le formulaire.
     var changing by remember(apiKey.isBlank()) { mutableStateOf(apiKey.isBlank()) }
@@ -114,5 +122,59 @@ internal fun SettingsTab(apiKey: String) {
                 "ne parte pas dans un backup adb.",
             style = MaterialTheme.typography.bodySmall,
         )
+
+        HorizontalDivider()
+
+        Text("Affichage", style = MaterialTheme.typography.titleMedium)
+        CheckRow("Heure de depart", display.showDeparture) { save(display.copy(showDeparture = it)) }
+        CheckRow("Temps d'attente", display.showWait) { save(display.copy(showWait = it)) }
+        CheckRow("Heure d'arrivee", display.showArrival) { save(display.copy(showArrival = it)) }
+        CheckRow("Duree", display.showDuration) { save(display.copy(showDuration = it)) }
+        CheckRow("Chemin (lignes empruntees)", display.showRoute) { save(display.copy(showRoute = it)) }
+
+        if (display.isEmpty) {
+            Text(
+                "Toutes les colonnes sont masquees : le widget n'affichera rien.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        HorizontalDivider()
+
+        Text("Temps de marche", style = MaterialTheme.typography.titleMedium)
+        MinutesField(
+            label = "Marche jusqu'a la gare de depart",
+            value = display.walkDeparture,
+        ) { save(display.copy(walkDeparture = it)) }
+        MinutesField(
+            label = "Marche depuis la gare d'arrivee",
+            value = display.walkArrival,
+        ) { save(display.copy(walkArrival = it)) }
+        Text(
+            "Un train qui part dans moins que la marche au depart est estompe : " +
+                "tu ne peux plus l'attraper. La marche a l'arrivee est ajoutee a l'heure affichee.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
+}
+
+@Composable
+private fun MinutesField(label: String, value: Int, onChange: (Int) -> Unit) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    val parsed = text.toIntOrNull()
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = {
+            text = it
+            val minutes = it.toIntOrNull()
+            if (minutes != null && minutes >= 0) onChange(minutes)
+        },
+        singleLine = true,
+        isError = parsed == null || parsed < 0,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        label = { Text("$label (min)") },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
