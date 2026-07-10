@@ -27,6 +27,7 @@ import androidx.glance.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.lazyratp.data.Journey
+import fr.lazyratp.data.WaitLabel
 import fr.lazyratp.data.WidgetRepo
 import fr.lazyratp.data.WidgetState
 import java.time.Instant
@@ -150,7 +151,7 @@ private fun JourneyRow(journey: Journey) {
         )
         Spacer(GlanceModifier.width(8.dp))
         Text(
-            text = if (journey.cancelled) "supprime" else waitLabel(waitMinutes),
+            text = if (journey.cancelled) "supprime" else WaitLabel.of(waitMinutes),
             style = TextStyle(
                 color = if (journey.cancelled) GlanceTheme.colors.error else GlanceTheme.colors.primary,
                 fontSize = 13.sp,
@@ -165,8 +166,3 @@ private fun JourneyRow(journey: Journey) {
     }
 }
 
-private fun waitLabel(minutes: Int): String = when {
-    minutes < 0 -> "parti"
-    minutes == 0 -> "a quai"
-    else -> "$minutes min"
-}

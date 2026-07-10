@@ -55,10 +55,9 @@ object WidgetRepo {
                 TripMode.NEXT_DEPARTURES ->
                     NavitiaApi.fetchJourneys(apiKey, favorite.from.id, favorite.to.id, favorite.forbiddenModes)
 
+                // Deja triee du plus tardif au plus tot : on lit la fin de journee a rebours.
                 TripMode.LAST_JOURNEY ->
-                    listOfNotNull(
-                        NavitiaApi.fetchLastJourney(apiKey, favorite.from.id, favorite.to.id, favorite.forbiddenModes)
-                    )
+                    NavitiaApi.fetchLastJourneys(apiKey, favorite.from.id, favorite.to.id, favorite.forbiddenModes)
             }
             val cache = WidgetCache(favorite.label, journeys, System.currentTimeMillis())
             Prefs.setCache(context, cache)

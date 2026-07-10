@@ -90,17 +90,21 @@ object NavitiaApi {
         all.filter { it.steps.isNotEmpty() }.ifEmpty { all }
     }
 
+    /** Autant de trajets de fin de journee qu'il en tient sur le widget. */
+    private const val LAST_JOURNEY_COUNT = 6
+
     /**
-     * Le dernier trajet du jour de service. Voir [LastJourney] : Navitia n'expose pas
-     * cette notion, on la reconstruit en montant la borne d'arrivee par paliers.
+     * La fin du jour de service : les derniers trajets, du plus tardif au plus tot.
+     * Voir [LastJourney] : Navitia n'expose pas cette notion, on la reconstruit en
+     * montant la borne d'arrivee par paliers.
      */
-    suspend fun fetchLastJourney(
+    suspend fun fetchLastJourneys(
         apiKey: String,
         from: String,
         to: String,
         forbiddenModes: Set<String> = emptySet(),
         nowMillis: Long = System.currentTimeMillis(),
-    ): Journey? = withContext(Dispatchers.IO) {
+    ): List<Journey> = withContext(Dispatchers.IO) {
         LastJourney.find(
             firstBound = ServiceDay.firstArrivalBound(nowMillis, PARIS),
             lastBound = ServiceDay.endOfService(nowMillis, PARIS),
@@ -108,7 +112,8 @@ object NavitiaApi {
             val dt = NAVITIA_DT.format(Instant.ofEpochMilli(bound).atZone(PARIS))
             try {
                 journeys(
-                    "$BASE/journeys?from=$from&to=$to&datetime=$dt&datetime_represents=arrival&count=5${forbidden(forbiddenModes)}",
+                    "$BASE/journeys?from=$from&to=$to&datetime=$dt&datetime_represents=arrival" +
+                        "&count=$LAST_JOURNEY_COUNT${forbidden(forbiddenModes)}",
                     apiKey,
                 )
                     // Une marche a pied n'est pas un trajet : elle existe a toute heure et
