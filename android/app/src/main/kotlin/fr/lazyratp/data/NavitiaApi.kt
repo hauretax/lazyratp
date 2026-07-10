@@ -58,6 +58,30 @@ object NavitiaApi {
     }
 
     /**
+     * Adresses et points d'interet, avec leurs coordonnees. Navitia geocode lui-meme :
+     * aucune dependance a un service de cartes.
+     */
+    suspend fun searchPlaces(apiKey: String, query: String): List<GeoPlace> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        val q = URLEncoder.encode(query, "UTF-8")
+        val body = runCatching { httpGet("$BASE/places?q=$q&type[]=address&type[]=poi&count=10", apiKey) }
+            .getOrElse { return@withContext emptyList() }
+
+        val places = JSONObject(body).optJSONArray("places") ?: return@withContext emptyList()
+        buildList {
+            for (i in 0 until places.length()) {
+                val p = places.getJSONObject(i)
+                val kind = p.optString("embedded_type")
+                val obj = p.optJSONObject(kind) ?: continue
+                val coord = obj.optJSONObject("coord") ?: continue
+                val lat = coord.optString("lat").toDoubleOrNull() ?: continue
+                val lon = coord.optString("lon").toDoubleOrNull() ?: continue
+                add(GeoPlace(name = obj.optString("name"), lat = lat, lon = lon, kind = kind))
+            }
+        }
+    }
+
+    /**
      * Eprouve une cle contre l'API reelle. Rend null si elle marche, le motif du refus sinon.
      * On ne remplace jamais une cle valide par une cle non verifiee.
      */

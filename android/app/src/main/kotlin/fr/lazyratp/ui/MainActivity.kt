@@ -62,7 +62,7 @@ private fun ConfigScreen() {
 
         when (tab) {
             0 -> FavoritesTab(apiKey = apiKey, favorites = favorites, selected = selected, rules = rules)
-            1 -> RulesTab(favorites = favorites, rules = rules)
+            1 -> RulesTab(apiKey = apiKey, favorites = favorites, rules = rules)
             else -> SettingsTab(apiKey = apiKey, display = display)
         }
     }

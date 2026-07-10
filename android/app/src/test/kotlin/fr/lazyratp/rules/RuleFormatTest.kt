@@ -73,4 +73,39 @@ class RuleFormatTest {
     fun `une fenetre a cheval sur minuit est signalee`() {
         assertEquals("22:00-02:00 (nuit)", RuleFormat.window(22 * 60, 2 * 60))
     }
+
+    @Test
+    fun `sans condition de lieu, rien n'est dit`() {
+        assertEquals("", RuleFormat.place(null))
+    }
+
+    @Test
+    fun `un lieu choisi s'annonce avec son rayon`() {
+        val chezMoi = PlaceCondition.NearPoint("10 Rue de Rivoli", 48.8555, 2.36041, radiusMeters = 300)
+        assertEquals("a moins de 300 m de 10 Rue de Rivoli", RuleFormat.place(chezMoi))
+    }
+
+    @Test
+    fun `la proximite du depart s'annonce aussi`() {
+        assertEquals("a moins de 600 m du depart", RuleFormat.place(PlaceCondition.NearDeparture(600)))
+    }
+
+    @Test
+    fun `le resume n'enchaine que les conditions posees`() {
+        val nu = Rule(id = "r", favoriteId = "f")
+        assertEquals("Tous les jours · Toute la journee", RuleFormat.summary(nu))
+
+        val complet = Rule(
+            id = "r",
+            favoriteId = "f",
+            days = setOf(1, 2, 3, 4, 5),
+            fromMinutes = 19 * 60,
+            toMinutes = 23 * 60,
+            place = PlaceCondition.NearPoint("Bureau", 48.0, 2.0, 500),
+        )
+        assertEquals(
+            "Lun-Ven · 19:00-23:00 · a moins de 500 m de Bureau",
+            RuleFormat.summary(complet),
+        )
+    }
 }

@@ -75,6 +75,15 @@ data class Favorite(
     }
 }
 
+/** Une adresse ou un point d'interet geocode par Navitia. Jamais persiste tel quel. */
+data class GeoPlace(
+    val name: String,
+    val lat: Double,
+    val lon: Double,
+    /** "address" ou "poi". */
+    val kind: String,
+)
+
 @Serializable
 data class Step(
     val mode: String,

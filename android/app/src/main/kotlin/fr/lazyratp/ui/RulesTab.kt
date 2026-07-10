@@ -1,5 +1,6 @@
 package fr.lazyratp.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -23,7 +24,9 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,12 +35,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import fr.lazyratp.data.Favorite
+import fr.lazyratp.data.GeoPlace
+import fr.lazyratp.data.NavitiaApi
 import fr.lazyratp.data.Prefs
+import fr.lazyratp.rules.PlaceCondition
 import fr.lazyratp.rules.Rule
 import fr.lazyratp.rules.RuleFormat
 import fr.lazyratp.rules.moved
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -48,7 +56,7 @@ import kotlin.math.ceil
 private val EXPIRY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM 'a' HH:mm")
 
 @Composable
-internal fun RulesTab(favorites: List<Favorite>, rules: List<Rule>) {
+internal fun RulesTab(apiKey: String, favorites: List<Favorite>, rules: List<Rule>) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -69,6 +77,7 @@ internal fun RulesTab(favorites: List<Favorite>, rules: List<Rule>) {
 
     if (editorOpen) {
         RuleEditor(
+            apiKey = apiKey,
             favorites = favorites,
             initial = editing,
             onCancel = { editorOpen = false },
@@ -170,11 +179,17 @@ internal fun RulesTab(favorites: List<Favorite>, rules: List<Rule>) {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun RuleEditor(
+    apiKey: String,
     favorites: List<Favorite>,
     initial: Rule?,
     onCancel: () -> Unit,
     onSave: (Rule) -> Unit,
 ) {
+    val initialPoint = initial?.place as? PlaceCondition.NearPoint
+    var usePlace by remember { mutableStateOf(initialPoint != null) }
+    var point by remember { mutableStateOf(initialPoint) }
+    var radiusText by remember { mutableStateOf((initialPoint?.radiusMeters ?: 600).toString()) }
+    val radius = radiusText.toIntOrNull()
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
     var favoriteId by remember { mutableStateOf(initial?.favoriteId ?: favorites.first().id) }
     var days by remember { mutableStateOf(initial?.days ?: emptySet()) }
@@ -190,7 +205,8 @@ private fun RuleEditor(
 
     val timeValid = allDay || (fromMinutes != null && toMinutes != null)
     val expiryValid = !expires || (hours != null && hours > 0)
-    val canSave = timeValid && expiryValid && favorites.any { it.id == favoriteId }
+    val placeValid = !usePlace || (point != null && radius != null && radius > 0)
+    val canSave = timeValid && expiryValid && placeValid && favorites.any { it.id == favoriteId }
 
     Column(
         modifier = Modifier
@@ -274,10 +290,43 @@ private fun RuleEditor(
             )
         }
 
-        if (initial?.place != null) {
+        CheckRow("Seulement pres d'un lieu", usePlace) { usePlace = it }
+        if (usePlace) {
+            val current = point
+            if (current == null) {
+                if (apiKey.isBlank()) {
+                    Text(
+                        "Saisis ta cle API dans Parametres pour chercher une adresse.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    AddressField(apiKey) { found ->
+                        point = PlaceCondition.NearPoint(found.name, found.lat, found.lon, radius ?: 600)
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(current.name, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { point = null }) { Text("Changer") }
+                }
+            }
+
+            OutlinedTextField(
+                value = radiusText,
+                onValueChange = { radiusText = it },
+                singleLine = true,
+                isError = radius == null || radius <= 0,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                label = { Text("Rayon (metres)") },
+                modifier = Modifier.fillMaxWidth(),
+            )
             Text(
-                "Cette regle porte une condition de lieu, conservee telle quelle. " +
-                    "La localisation n'est pas encore implementee : la regle ne matchera pas.",
+                "Sans position connue, une regle de lieu ne matche pas : elle echoue de " +
+                    "maniere fermee, sinon elle se declencherait partout. Autorise la " +
+                    "position dans Parametres.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -301,8 +350,7 @@ private fun RuleEditor(
                             days = days,
                             fromMinutes = computedFrom,
                             toMinutes = computedTo,
-                            // Conservee : l'editeur ne sait pas encore la construire.
-                            place = initial?.place,
+                            place = if (usePlace) point?.copy(radiusMeters = radius ?: 600) else null,
                             expiresAt = if (expires && hours != null) {
                                 System.currentTimeMillis() + hours * 3_600_000L
                             } else {
@@ -315,6 +363,50 @@ private fun RuleEditor(
         }
 
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Cherche une adresse ou un point d'interet. Navitia geocode, pas besoin de carte. */
+@Composable
+private fun AddressField(apiKey: String, onPick: (GeoPlace) -> Unit) {
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<GeoPlace>>(emptyList()) }
+
+    LaunchedEffect(query, apiKey) {
+        if (query.length < 3) {
+            results = emptyList()
+            return@LaunchedEffect
+        }
+        delay(300)
+        results = NavitiaApi.searchPlaces(apiKey, query)
+    }
+
+    OutlinedTextField(
+        value = query,
+        onValueChange = { query = it },
+        singleLine = true,
+        label = { Text("Adresse ou lieu") },
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    results.take(5).forEach { found ->
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    query = ""
+                    results = emptyList()
+                    onPick(found)
+                },
+        ) {
+            Column(Modifier.padding(8.dp)) {
+                Text(found.name, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    if (found.kind == "poi") "point d'interet" else "adresse",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
     }
 }
 

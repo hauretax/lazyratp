@@ -32,6 +32,16 @@ object RuleFormat {
         else -> "${minutesToHhMm(from)}-${minutesToHhMm(to)}"
     }
 
+    fun place(place: PlaceCondition?): String = when (place) {
+        null -> ""
+        is PlaceCondition.NearDeparture -> "a moins de ${place.radiusMeters} m du depart"
+        is PlaceCondition.NearPoint -> "a moins de ${place.radiusMeters} m de ${place.name}"
+    }
+
     /** Ligne de resume affichee sous le nom d'une regle. */
-    fun summary(rule: Rule): String = "${days(rule.days)} · ${window(rule.fromMinutes, rule.toMinutes)}"
+    fun summary(rule: Rule): String = listOf(
+        days(rule.days),
+        window(rule.fromMinutes, rule.toMinutes),
+        place(rule.place),
+    ).filter { it.isNotEmpty() }.joinToString(" · ")
 }
