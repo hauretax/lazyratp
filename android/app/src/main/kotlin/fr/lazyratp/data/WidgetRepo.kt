@@ -21,6 +21,8 @@ sealed interface WidgetState {
         /** Vrai quand l'appel reseau a echoue et qu'on affiche le dernier cache connu. */
         val stale: Boolean,
         val display: Display,
+        /** L'heure d'arrivee visee, quand le favori en porte une. Change ce qu'on rend. */
+        val arriveBy: Long? = null,
     ) : WidgetState
 
     data class Error(val message: String) : WidgetState
@@ -47,6 +49,7 @@ object WidgetRepo {
             fetchedAt = cache.fetchedAt,
             stale = false,
             display = Prefs.display(context),
+            arriveBy = cache.arriveBy,
         )
     }
 
@@ -91,15 +94,25 @@ object WidgetRepo {
                 // Deja triee du plus tardif au plus tot : on lit la fin de journee a rebours.
                 TripMode.LAST_JOURNEY ->
                     NavitiaApi.fetchLastJourneys(apiKey, fromParam, favorite.to.id, favorite.forbiddenModes)
+
+                // Idem : le dernier depart qui tient la cible se lit en tete.
+                TripMode.ARRIVE_BY -> favorite.arriveBy?.let { target ->
+                    NavitiaApi.fetchArriveBy(
+                        apiKey, fromParam, favorite.to.id, favorite.forbiddenModes, target,
+                    )
+                } ?: emptyList()
             }
-            val cache = WidgetCache(favorite.label, journeys, System.currentTimeMillis())
+            val cache = WidgetCache(favorite.label, journeys, System.currentTimeMillis(), favorite.arriveBy)
             Prefs.setCache(context, cache)
-            WidgetState.Ready(cache.favoriteLabel, ruleName, cache.journeys, cache.fetchedAt, false, display)
+            WidgetState.Ready(
+                cache.favoriteLabel, ruleName, cache.journeys, cache.fetchedAt, false, display, cache.arriveBy,
+            )
         } catch (e: Exception) {
             val cached = Prefs.cache(context)
             when {
-                cached != null && cached.favoriteLabel == favorite.label ->
-                    WidgetState.Ready(cached.favoriteLabel, ruleName, cached.journeys, cached.fetchedAt, true, display)
+                cached != null && cached.favoriteLabel == favorite.label -> WidgetState.Ready(
+                    cached.favoriteLabel, ruleName, cached.journeys, cached.fetchedAt, true, display, cached.arriveBy,
+                )
 
                 else -> WidgetState.Error(e.message ?: "Reseau indisponible")
             }

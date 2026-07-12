@@ -34,6 +34,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import fr.lazyratp.data.ArriveBy
 import fr.lazyratp.data.Display
 import fr.lazyratp.data.Journey
 import fr.lazyratp.data.LineBadge
@@ -123,15 +124,53 @@ private fun Hint(text: String) {
 @Composable
 private fun Ready(state: WidgetState.Ready) {
     Header(state)
+
+    // Un favori "arriver a telle heure" ne repond pas a "quand part le prochain" mais a
+    // "jusqu'a quand puis-je attendre". La reponse merite la premiere ligne, pas d'etre
+    // deduite d'une liste d'horaires.
+    if (state.arriveBy != null) {
+        Deadline(state)
+    }
+
     Spacer(GlanceModifier.height(6.dp))
 
     when {
         state.display.isEmpty -> Hint("Toutes les colonnes sont masquees.\nOuvre Parametres > Affichage")
+        state.journeys.isEmpty() && state.arriveBy != null -> Hint("Aucun trajet n'arrive a l'heure")
         state.journeys.isEmpty() -> Hint("Aucun trajet a venir")
         else -> LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
             items(state.journeys) { journey -> JourneyRow(journey, state.display) }
         }
     }
+}
+
+@Composable
+private fun Deadline(state: WidgetState.Ready) {
+    val walk = state.display.walkDeparture
+    val latest = ArriveBy.latestCatchable(state.journeys, System.currentTimeMillis(), walk)
+
+    if (latest == null) {
+        Text(
+            text = "Trop tard pour arriver a l'heure",
+            style = TextStyle(color = GlanceTheme.colors.error, fontSize = 13.sp, fontWeight = FontWeight.Bold),
+        )
+        return
+    }
+
+    // Sans temps de marche configure, "partir a" et "etre au depart a" sont la meme heure :
+    // on n'affiche pas deux fois la meme chose.
+    val leaveAt = ArriveBy.leaveAt(latest.departure, walk)
+    val line = if (walk > 0) {
+        "Etre au depart a ${latest.departure.asClock()} · partir a ${leaveAt.asClock()}"
+    } else {
+        "Etre au depart a ${latest.departure.asClock()}"
+    }
+
+    Text(
+        text = line,
+        style = TextStyle(color = GlanceTheme.colors.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold),
+        maxLines = 1,
+    )
 }
 
 @Composable

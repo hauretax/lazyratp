@@ -35,6 +35,7 @@ import fr.lazyratp.data.FavoriteDraft
 import fr.lazyratp.data.NavitiaApi
 import fr.lazyratp.data.Prefs
 import fr.lazyratp.data.Station
+import fr.lazyratp.data.TargetTime
 import fr.lazyratp.rules.PinRule
 import fr.lazyratp.rules.Rule
 import fr.lazyratp.rules.countForFavorite
@@ -144,6 +145,18 @@ internal fun FavoritesTab(
                             },
                         )
                         Text(favorite.label, modifier = Modifier.weight(1f))
+                    }
+
+                    // Un rendez-vous passe ne s'affichera plus jamais. Le dire ici, sinon la
+                    // carte reste dans la liste sans qu'on comprenne pourquoi le widget l'ignore.
+                    val expired = favorite.effectiveExpiry?.let { it <= System.currentTimeMillis() } == true
+                    if (expired) {
+                        Text(
+                            text = "Passe : le widget ne l'affiche plus",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(start = 48.dp),
+                        )
                     }
 
                     val ruleCount = rules.countForFavorite(favorite.id)
@@ -268,7 +281,45 @@ private fun FavoriteForm(
         }
         StationField("Arrivee", apiKey, draft.to) { draft = draft.copy(to = it) }
 
-        CheckRow("Dernier trajet du jour", draft.lastJourney) { draft = draft.copy(lastJourney = it) }
+        // Les deux modes se contredisent : "le dernier du jour" et "arriver a 19h00" ne
+        // designent pas le meme trajet. Cocher l'un decoche l'autre, plutot que de laisser
+        // une combinaison qu'il faudrait ensuite arbitrer en silence.
+        CheckRow("Dernier trajet du jour", draft.lastJourney) {
+            draft = draft.copy(lastJourney = it, arriveBy = if (it) false else draft.arriveBy)
+        }
+        CheckRow("Arriver a une heure precise", draft.arriveBy) {
+            draft = draft.copy(arriveBy = it, lastJourney = if (it) false else draft.lastJourney)
+        }
+
+        if (draft.arriveBy) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Chaque champ ne signale que sa propre erreur : une date juste ne doit pas
+                // rougir parce que l'heure d'a cote est encore vide.
+                OutlinedTextField(
+                    value = draft.targetDate,
+                    onValueChange = { draft = draft.copy(targetDate = it) },
+                    singleLine = true,
+                    isError = draft.targetDate.isNotBlank() && !TargetTime.isValidDate(draft.targetDate),
+                    label = { Text("Date (JJ/MM/AAAA)") },
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = draft.targetTime,
+                    onValueChange = { draft = draft.copy(targetTime = it) },
+                    singleLine = true,
+                    isError = draft.targetTime.isNotBlank() && !TargetTime.isValidTime(draft.targetTime),
+                    label = { Text("Arrivee (HH:MM)") },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Text(
+                "Le widget affichera l'heure a laquelle il faut etre au point de depart, " +
+                    "et non les prochains departs. Passe l'heure visee, le widget cesse " +
+                    "d'afficher ce trajet, mais le favori reste ici : a toi de le supprimer.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
         CheckRow("Sans bus (exclut aussi le Noctilien)", draft.noBus) { draft = draft.copy(noBus = it) }
 
         HorizontalDivider()

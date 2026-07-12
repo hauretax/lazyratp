@@ -80,6 +80,18 @@ data class Rule(
     /** null = n'importe ou. Sinon exige une position connue, sans quoi la regle ne matche pas. */
     val place: PlaceCondition? = null,
 
+    /**
+     * Minutes avant l'heure cible du favori designe. null = pas de condition.
+     *
+     * Ne se code pas avec fromMinutes/toMinutes : ce n'est pas une plage horaire fixe mais
+     * une fenetre relative a la cible du favori, qui bouge avec elle. "Deux heures avant"
+     * veut dire 17h00 pour un rendez-vous a 19h00, et 07h00 pour un train a 09h00.
+     *
+     * Exige que le favori porte une cible ([TripMode.ARRIVE_BY]), sans quoi la regle ne
+     * matche pas : sans cible, "deux heures avant" ne designe aucun instant.
+     */
+    val beforeTargetMinutes: Int? = null,
+
     /** Epoch millis. null = permanente. */
     val expiresAt: Long? = null,
 )

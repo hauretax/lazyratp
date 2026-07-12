@@ -45,10 +45,18 @@ object RuleFormat {
         return "$distance ${place.radiusMeters} m $target"
     }
 
+    /** "a moins de 2 h du rendez-vous". Les heures rondes se lisent mieux que 120 min. */
+    fun approach(beforeTargetMinutes: Int?): String = when {
+        beforeTargetMinutes == null -> ""
+        beforeTargetMinutes % 60 == 0 -> "a moins de ${beforeTargetMinutes / 60} h du rendez-vous"
+        else -> "a moins de $beforeTargetMinutes min du rendez-vous"
+    }
+
     /** Ligne de resume affichee sous le nom d'une regle. */
     fun summary(rule: Rule): String = listOf(
         days(rule.days),
         window(rule.fromMinutes, rule.toMinutes),
+        approach(rule.beforeTargetMinutes),
         place(rule.place),
     ).filter { it.isNotEmpty() }.joinToString(" · ")
 }

@@ -171,6 +171,38 @@ object NavitiaApi {
             .take(DISPLAY_COUNT)
     }
 
+    /**
+     * Les trajets qui arrivent au plus tard a [targetMillis], du plus tardif au plus tot.
+     *
+     * Meme requete que le dernier trajet du jour, mais la borne d'arrivee est donnee au
+     * lieu d'etre cherchee : c'est le rendez-vous. On les trie a rebours parce que la
+     * question posee est "jusqu'a quand puis-je attendre", pas "quand puis-je partir".
+     */
+    suspend fun fetchArriveBy(
+        apiKey: String,
+        from: String,
+        to: String,
+        forbiddenModes: Set<String> = emptySet(),
+        targetMillis: Long,
+    ): List<Journey> = withContext(Dispatchers.IO) {
+        val dt = NAVITIA_DT.format(Instant.ofEpochMilli(targetMillis).atZone(PARIS))
+        try {
+            journeys(
+                "$BASE/journeys?from=$from&to=$to&datetime=$dt&datetime_represents=arrival" +
+                    "&count=$FETCH_COUNT${forbidden(forbiddenModes)}$REALTIME",
+                apiKey,
+            )
+                // Une marche a pied n'est pas un trajet : elle "arrive" a n'importe quelle heure.
+                .filter { it.steps.isNotEmpty() }
+                .dedupeByDeparture()
+                .sortedByDescending { it.departure }
+                .take(DISPLAY_COUNT)
+        } catch (e: NavitiaException) {
+            // 404 no_solution : rien ne permet d'arriver a l'heure. C'est une reponse, pas une panne.
+            if (e.code == 404) emptyList() else throw e
+        }
+    }
+
     private fun forbidden(modes: Set<String>): String =
         modes.joinToString("") { "&forbidden_uris[]=$it" }
 

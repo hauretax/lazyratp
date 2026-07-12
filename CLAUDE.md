@@ -46,7 +46,11 @@ Sans ca, Gradle echoue sur un message opaque qui n'est que le numero de version 
 
 ## Verifier sur l'appareil
 
-Le telephone de test est un Pixel 10a en wifi adb (pas d'USB) : voir la memoire projet.
+Le telephone de dev est un **Xiaomi Redmi Note 10 Pro en USB** (Android 12), sur lequel
+l'app et le widget sont deja poses. Le Pixel 10a qui apparait parfois en wifi adb est le
+telephone **personnel** de l'utilisateur : ne pas le piloter. Si les deux sont visibles,
+deconnecter le Pixel plutot que de jongler avec `-s`.
+
 Un changement de widget ne se verifie pas au typecheck. Le protocole qui marche :
 
 ```bash
@@ -60,7 +64,9 @@ au premier plan AVANT de capturer l'ecran, jamais apres : une capture prise pend
 l'utilisateur se sert de son telephone ramene ses messages prives. Garder chaque capture :
 
 ```bash
-adb shell dumpsys activity activities | grep -m1 topResumedActivity | grep -q fr.lazyratp \
+# topResumedActivity n'existe pas avant Android 13 : le Xiaomi dit mResumedActivity.
+adb shell dumpsys activity activities \
+  | grep -m1 -E "topResumedActivity|mResumedActivity" | grep -q fr.lazyratp \
   && adb exec-out screencap -p > /tmp/shot.png \
   || echo "telephone occupe, ne pas capturer"
 ```

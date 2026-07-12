@@ -29,7 +29,9 @@ object RuleEngine {
         location: LatLon? = null,
         fallbackIndex: Int = 0,
     ): Resolution? {
-        val alive = favorites.filter { it.expiresAt == null || nowMillis < it.expiresAt }
+        // effectiveExpiry et non expiresAt : un favori "arriver a 19h00" s'eteint a 19h00,
+        // sans quoi un rendez-vous d'hier trainerait dans la liste jusqu'a suppression manuelle.
+        val alive = favorites.filter { f -> f.effectiveExpiry.let { it == null || nowMillis < it } }
         if (alive.isEmpty()) return null
 
         val byId = alive.associateBy { it.id }
@@ -56,9 +58,24 @@ object RuleEngine {
         if (rule.expiresAt != null && nowMillis >= rule.expiresAt) return false
         if (rule.days.isNotEmpty() && now.dayOfWeek.value !in rule.days) return false
         if (!inWindow(rule.fromMinutes, rule.toMinutes, now.hour * 60 + now.minute)) return false
+        if (!inApproach(rule.beforeTargetMinutes, favorite.arriveBy, nowMillis)) return false
 
         val place = rule.place ?: return true
         return matchesPlace(place, favorite, location)
+    }
+
+    /**
+     * "A moins de N minutes de la cible" : la fenetre s'ouvre a cible - N et se ferme a la
+     * cible. Un favori sans cible ne matche pas : "deux heures avant" ne designe alors
+     * aucun instant, et faire matcher serait afficher un trajet pour un rendez-vous
+     * inexistant.
+     */
+    internal fun inApproach(beforeTargetMinutes: Int?, arriveBy: Long?, nowMillis: Long): Boolean {
+        if (beforeTargetMinutes == null) return true
+        if (arriveBy == null) return false
+
+        val opensAt = arriveBy - beforeTargetMinutes * 60_000L
+        return nowMillis in opensAt..arriveBy
     }
 
     /** Bornes incluses. from > to decrit une fenetre a cheval sur minuit. */

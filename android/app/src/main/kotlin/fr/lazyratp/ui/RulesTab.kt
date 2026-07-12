@@ -207,15 +207,23 @@ private fun RuleEditor(
     var toText by remember { mutableStateOf(initial?.toMinutes?.let(RuleFormat::minutesToHhMm) ?: "10:00") }
     var expires by remember { mutableStateOf(initial?.expiresAt != null) }
     var hoursText by remember { mutableStateOf(initial?.expiresAt?.let { remainingHours(it).toString() } ?: "24") }
+    var useApproach by remember { mutableStateOf(initial?.beforeTargetMinutes != null) }
+    var approachText by remember { mutableStateOf((initial?.beforeTargetMinutes ?: 120).toString()) }
 
     val fromMinutes = RuleFormat.parseHhMm(fromText)
     val toMinutes = RuleFormat.parseHhMm(toText)
     val hours = hoursText.toIntOrNull()
+    val approach = approachText.toIntOrNull()
+
+    // La condition d'approche n'a de sens que sur un favori qui porte une cible.
+    val targeted = favorites.firstOrNull { it.id == favoriteId }?.arriveBy != null
 
     val timeValid = allDay || (fromMinutes != null && toMinutes != null)
     val expiryValid = !expires || (hours != null && hours > 0)
     val placeValid = !usePlace || (point != null && radius != null && radius > 0)
-    val canSave = timeValid && expiryValid && placeValid && favorites.any { it.id == favoriteId }
+    val approachValid = !useApproach || (targeted && approach != null && approach > 0)
+    val canSave = timeValid && expiryValid && placeValid && approachValid &&
+        favorites.any { it.id == favoriteId }
 
     Column(
         modifier = Modifier
@@ -285,6 +293,30 @@ private fun RuleEditor(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+        }
+
+        // Fenetre relative a la cible du favori, pas plage horaire fixe : "2 h avant" vaut
+        // 17h00 pour un rendez-vous a 19h00, et 07h00 pour un train a 09h00.
+        CheckRow("A l'approche du rendez-vous", useApproach) { useApproach = it }
+        if (useApproach) {
+            if (!targeted) {
+                Text(
+                    "Ce trajet ne vise aucune heure d'arrivee. Coche \"Arriver a une heure " +
+                        "precise\" sur le favori, sinon \"avant le rendez-vous\" ne designe " +
+                        "aucun instant.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            OutlinedTextField(
+                value = approachText,
+                onValueChange = { approachText = it },
+                singleLine = true,
+                isError = approach == null || approach <= 0,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                label = { Text("Combien de minutes avant l'arrivee visee") },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         CheckRow("Expire", expires) { expires = it }
@@ -388,6 +420,7 @@ private fun RuleEditor(
                         } else {
                             null
                         },
+                        beforeTargetMinutes = if (useApproach) approach else null,
                             expiresAt = if (expires && hours != null) {
                                 System.currentTimeMillis() + hours * 3_600_000L
                             } else {

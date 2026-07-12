@@ -20,6 +20,13 @@ enum class TripMode {
 
     /** Le dernier trajet praticable du jour de service. */
     LAST_JOURNEY,
+
+    /**
+     * Arriver avant une heure precise, un jour precis. On ne lit plus les prochains
+     * departs mais les derniers qui tiennent encore la cible : la question n'est pas
+     * "quand puis-je partir" mais "jusqu'a quand puis-je attendre".
+     */
+    ARRIVE_BY,
 }
 
 /** Identifiants Navitia des modes physiques qu'on sait exclure. */
@@ -44,12 +51,23 @@ data class Favorite(
     val fromHere: Boolean = false,
     /** Epoch millis. null = permanent. Un favori temporaire disparait de lui-meme. */
     val expiresAt: Long? = null,
+
+    /**
+     * Epoch millis. L'heure a laquelle il faut etre arrive. N'a de sens qu'avec
+     * [TripMode.ARRIVE_BY], et lui est indispensable : sans cible, pas de trajet a calculer.
+     */
+    val arriveBy: Long? = null,
 ) {
+    /**
+     * L'identifiant derive de la requete entiere, cible comprise : deux rendez-vous a la
+     * meme adresse a deux heures differentes sont deux favoris, pas un seul.
+     */
     val id: String
         get() = buildString {
             append(if (fromHere) HERE else from.id).append('>').append(to.id)
             if (mode != TripMode.NEXT_DEPARTURES) append('#').append(mode.name)
             if (forbiddenModes.isNotEmpty()) append('#').append(forbiddenModes.sorted().joinToString(","))
+            if (arriveBy != null) append('#').append(arriveBy)
         }
 
     val label: String
@@ -57,10 +75,18 @@ data class Favorite(
             append(if (fromHere) "Ma position" else from.name).append(" → ").append(to.name)
             val tags = buildList {
                 if (mode == TripMode.LAST_JOURNEY) add("dernier")
+                if (mode == TripMode.ARRIVE_BY && arriveBy != null) add("pour ${TargetTime.format(arriveBy)}")
                 if (PhysicalMode.BUS in forbiddenModes) add("sans bus")
             }
             if (tags.isNotEmpty()) append(tags.joinToString(", ", prefix = " (", postfix = ")"))
         }
+
+    /**
+     * Un rendez-vous passe n'a plus rien a afficher : le favori s'eteint de lui-meme a
+     * l'heure cible, sans quoi il faudrait le supprimer a la main le lendemain.
+     */
+    val effectiveExpiry: Long?
+        get() = if (mode == TripMode.ARRIVE_BY) arriveBy ?: expiresAt else expiresAt
 
     /**
      * Ce qu'on envoie a Navitia comme point de depart : un identifiant d'arret,
@@ -131,4 +157,6 @@ data class WidgetCache(
     val favoriteLabel: String,
     val journeys: List<Journey>,
     val fetchedAt: Long,
+    /** Recopie du favori : le widget doit pouvoir rendre la cible sans relire les favoris. */
+    val arriveBy: Long? = null,
 )
