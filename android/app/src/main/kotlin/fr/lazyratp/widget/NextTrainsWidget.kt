@@ -10,12 +10,14 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.lazy.LazyColumn
-import androidx.glance.appwidget.lazy.items
+import androidx.glance.appwidget.lazy.itemsIndexed
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.currentState
@@ -43,6 +45,7 @@ import fr.lazyratp.data.Walk
 import fr.lazyratp.data.WidgetRepo
 import fr.lazyratp.data.WidgetState
 import fr.lazyratp.ui.MainActivity
+import fr.lazyratp.ui.TripDetailActivity
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -139,7 +142,7 @@ private fun Ready(state: WidgetState.Ready) {
         state.journeys.isEmpty() && state.arriveBy != null -> Hint("Aucun trajet n'arrive a l'heure")
         state.journeys.isEmpty() -> Hint("Aucun trajet a venir")
         else -> LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
-            items(state.journeys) { journey -> JourneyRow(journey, state.display) }
+            itemsIndexed(state.journeys) { index, journey -> JourneyRow(index, journey, state.display) }
         }
     }
 }
@@ -219,7 +222,7 @@ private fun Header(state: WidgetState.Ready) {
 }
 
 @Composable
-private fun JourneyRow(journey: Journey, display: Display) {
+private fun JourneyRow(index: Int, journey: Journey, display: Display) {
     val wait = Walk.waitMinutes(journey.departure, System.currentTimeMillis())
     val reachable = Walk.isReachable(wait, display.walkDeparture)
 
@@ -230,7 +233,14 @@ private fun JourneyRow(journey: Journey, display: Display) {
     val secondary: ColorProvider = GlanceTheme.colors.onSurfaceVariant
 
     Row(
-        modifier = GlanceModifier.fillMaxWidth().padding(vertical = 3.dp),
+        // Appuyer sur une ligne ouvre sa fiche detaillee ; le clic passe l'index du trajet,
+        // que TripDetailActivity relit dans le cache du widget.
+        modifier = GlanceModifier.fillMaxWidth().padding(vertical = 3.dp)
+            .clickable(
+                actionStartActivity<TripDetailActivity>(
+                    actionParametersOf(ActionParameters.Key<Int>(TripDetailActivity.EXTRA_INDEX) to index),
+                ),
+            ),
         verticalAlignment = Alignment.Vertical.CenterVertically,
     ) {
         if (display.showDeparture) {

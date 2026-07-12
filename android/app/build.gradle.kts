@@ -63,4 +63,8 @@ dependencies {
 
     // Le moteur de regles est du Kotlin pur : il se teste sans appareil.
     testImplementation(libs.junit)
+    // org.json n'est qu'un stub dans les tests JVM d'Android (toute methode leve une
+    // exception). On amene la vraie implementation pour tester JourneyParser sur des
+    // corps de reponse figes, sans emulateur.
+    testImplementation(libs.json)
 }

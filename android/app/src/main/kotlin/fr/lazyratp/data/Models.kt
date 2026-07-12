@@ -121,6 +121,26 @@ data class Step(
     val duration: Int,
     /** Secondes de marche precedant cette etape. */
     val walkBefore: Int,
+    /** Epoch millis du depart et de l'arrivee de ce troncon. Pour la fiche detaillee. */
+    val departure: Long = 0,
+    val arrival: Long = 0,
+    /** Voie de depart, quand PRIM la fournit — rare en Ile-de-France. Vide sinon. */
+    val platform: String = "",
+    /** Couleur de la ligne, hex sans '#' (ex. "FFCC30"). Vide si absente. */
+    val color: String = "",
+)
+
+/**
+ * Une perturbation qui touche une ligne du trajet. Navitia les rend une fois a la racine
+ * de la reponse ; on les rattache au trajet des le parsing pour que la fiche detaillee
+ * n'ait pas a relire l'API.
+ */
+@Serializable
+data class Disruption(
+    /** Nom de la severite Navitia, ex. "perturbée". */
+    val severity: String,
+    val title: String,
+    val message: String,
 )
 
 @Serializable
@@ -134,6 +154,8 @@ data class Journey(
     val steps: List<Step>,
     val walkAfterLast: Int,
     val cancelled: Boolean,
+    /** Les perturbations touchant les lignes de ce trajet. Vide quand rien n'est signale. */
+    val disruptions: List<Disruption> = emptyList(),
 ) {
     val code: String get() = steps.firstOrNull()?.code.orEmpty()
 

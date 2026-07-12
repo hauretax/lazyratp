@@ -30,6 +30,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Ouverte depuis le widget ; pas de filtre LAUNCHER, elle n'a pas d'icone propre. -->
+        <activity
+            android:name=".ui.TripDetailActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".widget.NextTrainsReceiver"
             android:exported="true">

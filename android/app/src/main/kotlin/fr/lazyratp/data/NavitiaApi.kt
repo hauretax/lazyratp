@@ -206,57 +206,9 @@ object NavitiaApi {
     private fun forbidden(modes: Set<String>): String =
         modes.joinToString("") { "&forbidden_uris[]=$it" }
 
-    private fun journeys(url: String, apiKey: String): List<Journey> {
-        val body = httpGet(url, apiKey)
-        val journeys = JSONObject(body).optJSONArray("journeys") ?: return emptyList()
-
-        return buildList {
-            for (i in 0 until journeys.length()) {
-                val j = journeys.getJSONObject(i)
-                val sections = j.optJSONArray("sections") ?: JSONArray()
-
-                val steps = mutableListOf<Step>()
-                var pendingWalk = 0
-
-                for (k in 0 until sections.length()) {
-                    val s = sections.getJSONObject(k)
-                    if (s.optString("type") == "public_transport") {
-                        val info = s.optJSONObject("display_informations") ?: JSONObject()
-                        steps += Step(
-                            mode = info.optString("commercial_mode", "?"),
-                            code = info.optString("code", ""),
-                            direction = info.optString("direction", ""),
-                            from = s.optJSONObject("from")?.optJSONObject("stop_point")?.optString("name") ?: "?",
-                            to = s.optJSONObject("to")?.optJSONObject("stop_point")?.optString("name") ?: "?",
-                            duration = s.optInt("duration"),
-                            walkBefore = pendingWalk,
-                        )
-                        pendingWalk = 0
-                    } else {
-                        pendingWalk += s.optInt("duration")
-                    }
-                }
-
-                add(
-                    Journey(
-                        departure = parseNavitiaTime(j.optString("departure_date_time")),
-                        arrival = parseNavitiaTime(j.optString("arrival_date_time")),
-                        duration = j.optInt("duration"),
-                        transfers = j.optInt("nb_transfers"),
-                        steps = steps,
-                        walkAfterLast = pendingWalk,
-                        cancelled = j.optString("status") == "NO_SERVICE",
-                    )
-                )
-            }
-        }
-    }
-
-    /** "20260709T101800" -> epoch millis. */
-    private fun parseNavitiaTime(raw: String): Long {
-        if (raw.length < 15) return 0L
-        return LocalDateTime.parse(raw, NAVITIA_DT).atZone(PARIS).toInstant().toEpochMilli()
-    }
+    /** Le parsing vit dans [JourneyParser], teste sur la JVM. Ici, seulement le reseau. */
+    private fun journeys(url: String, apiKey: String): List<Journey> =
+        JourneyParser.parse(httpGet(url, apiKey))
 
     private fun httpGet(url: String, apiKey: String): String {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
