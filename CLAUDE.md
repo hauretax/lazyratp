@@ -55,6 +55,19 @@ adb logcat -d | grep -i "lazyratp\|glance.session"
 adb shell dumpsys appwidget | grep lazyratp  # instances posees sur l'ecran d'accueil
 ```
 
+**C'est un telephone personnel, pas un banc de test.** Toujours verifier que LazyRATP est
+au premier plan AVANT de capturer l'ecran, jamais apres : une capture prise pendant que
+l'utilisateur se sert de son telephone ramene ses messages prives. Garder chaque capture :
+
+```bash
+adb shell dumpsys activity activities | grep -m1 topResumedActivity | grep -q fr.lazyratp \
+  && adb exec-out screencap -p > /tmp/shot.png \
+  || echo "telephone occupe, ne pas capturer"
+```
+
+Si l'appareil est pris, s'arreter et le dire, plutot que de relancer l'app par-dessus ce
+que l'utilisateur est en train de faire.
+
 Piege : le widget peut afficher le resultat du rafraichissement *precedent*. Comparer
 l'horodatage du header a `adb shell date` avant de conclure qu'un refresh a fonctionne.
 

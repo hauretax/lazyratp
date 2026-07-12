@@ -196,6 +196,7 @@ private fun RuleEditor(
     var usePlace by remember { mutableStateOf(initialPoint != null) }
     var point by remember { mutableStateOf(initialPoint) }
     var searchingPlace by remember { mutableStateOf(false) }
+    var awayFromPlace by remember { mutableStateOf(initialPoint?.inverted ?: false) }
     var radiusText by remember { mutableStateOf((initialPoint?.radiusMeters ?: 600).toString()) }
     val radius = radiusText.toIntOrNull()
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
@@ -298,8 +299,17 @@ private fun RuleEditor(
             )
         }
 
-        CheckRow("Seulement pres d'un lieu", usePlace) { usePlace = it }
+        CheckRow("Selon ma position par rapport a un lieu", usePlace) { usePlace = it }
         if (usePlace) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = !awayFromPlace, onClick = { awayFromPlace = false })
+                Text("Quand j'y suis (dans le rayon)")
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = awayFromPlace, onClick = { awayFromPlace = true })
+                Text("Quand j'en suis loin (au-dela du rayon)")
+            }
+
             val current = point
             if (current != null && !searchingPlace) {
                 Row(
@@ -346,9 +356,10 @@ private fun RuleEditor(
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                "Sans position connue, une regle de lieu ne matche pas : elle echoue de " +
-                    "maniere fermee, sinon elle se declencherait partout. Autorise la " +
-                    "position dans Parametres.",
+                "Sans position connue, une regle de lieu ne matche pas, dans un sens comme " +
+                    "dans l'autre : ne pas savoir ou l'on est n'est pas etre ailleurs. Sans " +
+                    "cela, un GPS en panne declencherait \"quand j'en suis loin\" depuis le " +
+                    "salon. Autorise la position dans Parametres.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -372,7 +383,11 @@ private fun RuleEditor(
                             days = days,
                             fromMinutes = computedFrom,
                             toMinutes = computedTo,
-                            place = if (usePlace) point?.copy(radiusMeters = radius ?: 600) else null,
+                            place = if (usePlace) {
+                            point?.copy(radiusMeters = radius ?: 600, inverted = awayFromPlace)
+                        } else {
+                            null
+                        },
                             expiresAt = if (expires && hours != null) {
                                 System.currentTimeMillis() + hours * 3_600_000L
                             } else {

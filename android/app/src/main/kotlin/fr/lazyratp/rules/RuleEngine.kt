@@ -68,8 +68,12 @@ object RuleEngine {
     }
 
     /**
-     * Sans position connue, une regle de lieu ne matche pas.
-     * On echoue de maniere fermee : sinon elle se declencherait partout.
+     * Sans position connue, une regle de lieu ne matche pas, inversee ou non.
+     *
+     * On echoue de maniere fermee dans les deux sens. Le cas inverse est le piege : il
+     * serait tentant de lire "position inconnue" comme "pas pres, donc loin", mais une
+     * regle "quand je suis loin de chez moi" se declencherait alors dans son salon des
+     * que le GPS tousse. Ne pas savoir ou l'on est n'est pas etre ailleurs.
      */
     private fun matchesPlace(place: PlaceCondition, favorite: Favorite, location: LatLon?): Boolean {
         if (location == null) return false
@@ -84,7 +88,8 @@ object RuleEngine {
             is PlaceCondition.NearPoint -> LatLon(place.lat, place.lon)
         }
 
-        return haversineMeters(location, target) <= place.radiusMeters
+        val near = haversineMeters(location, target) <= place.radiusMeters
+        return if (place.inverted) !near else near
     }
 
     internal fun haversineMeters(a: LatLon, b: LatLon): Double {

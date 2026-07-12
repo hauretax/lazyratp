@@ -9,12 +9,28 @@ sealed interface PlaceCondition {
     val radiusMeters: Int
 
     /**
+     * Inverse la condition : "je suis LOIN de ce lieu", au-dela du rayon.
+     *
+     * Un booleen plutot que des variantes FarFrom* jumelles : le rayon et le lieu ne
+     * changent pas de nature quand on inverse le test, et les regles deja enregistrees
+     * se relisent telles quelles (false par defaut).
+     *
+     * L'echec reste ferme dans les deux sens : sans position connue, la regle ne matche
+     * pas. Une position inconnue n'est pas une position lointaine, sinon un GPS en panne
+     * declencherait "loin de chez moi" au milieu du salon.
+     */
+    val inverted: Boolean
+
+    /**
      * "Je suis pres du point de depart de ce trajet."
      * Ne demande aucune configuration : les coordonnees viennent de Navitia.
      */
     @Serializable
     @SerialName("near_departure")
-    data class NearDeparture(override val radiusMeters: Int = 600) : PlaceCondition
+    data class NearDeparture(
+        override val radiusMeters: Int = 600,
+        override val inverted: Boolean = false,
+    ) : PlaceCondition
 
     /** Un lieu pose a la main, quand le domicile est loin de sa gare. */
     @Serializable
@@ -24,6 +40,7 @@ sealed interface PlaceCondition {
         val lat: Double,
         val lon: Double,
         override val radiusMeters: Int = 600,
+        override val inverted: Boolean = false,
     ) : PlaceCondition
 }
 

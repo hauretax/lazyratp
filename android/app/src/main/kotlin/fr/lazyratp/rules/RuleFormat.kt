@@ -32,10 +32,17 @@ object RuleFormat {
         else -> "${minutesToHhMm(from)}-${minutesToHhMm(to)}"
     }
 
-    fun place(place: PlaceCondition?): String = when (place) {
-        null -> ""
-        is PlaceCondition.NearDeparture -> "a moins de ${place.radiusMeters} m du depart"
-        is PlaceCondition.NearPoint -> "a moins de ${place.radiusMeters} m de ${place.name}"
+    fun place(place: PlaceCondition?): String {
+        if (place == null) return ""
+
+        // "a plus de" / "a moins de" : la distinction doit sauter aux yeux sur la carte,
+        // deux regles inverses ne differant que par la.
+        val distance = if (place.inverted) "a plus de" else "a moins de"
+        val target = when (place) {
+            is PlaceCondition.NearDeparture -> "du depart"
+            is PlaceCondition.NearPoint -> "de ${place.name}"
+        }
+        return "$distance ${place.radiusMeters} m $target"
     }
 
     /** Ligne de resume affichee sous le nom d'une regle. */
