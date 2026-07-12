@@ -155,14 +155,18 @@ object JourneyParser {
     }
 
     private val HTML_TAG = Regex("<[^>]+>")
+    private val HEX_ENTITY = Regex("&#[xX]([0-9a-fA-F]+);")
+    private val DEC_ENTITY = Regex("&#(\\d+);")
 
     /** Retire les balises d'abord, decode les entites ensuite : l'inverse fabriquerait de fausses balises. */
     private fun stripHtml(s: String): String =
         s.replace(HTML_TAG, "")
+            .replace(HEX_ENTITY) { it.groupValues[1].toInt(16).toChar().toString() }
+            // Les perturbations PRIM arrivent en entites numeriques ("P&#233;riode", "ao&#251;t").
+            .replace(DEC_ENTITY) { it.groupValues[1].toInt().toChar().toString() }
             .replace("&nbsp;", " ")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
-            .replace("&#39;", "'")
             .replace("&quot;", "\"")
             .replace("&amp;", "&")
             .trim()

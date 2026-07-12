@@ -18,6 +18,9 @@ object NavitiaApi {
 
     private const val BASE = "https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia"
 
+    /** SIRI Lite : les departs temps reel d'un arret, avec la voie que /journeys tait. */
+    private const val SIRI = "https://prim.iledefrance-mobilites.fr/marketplace/stop-monitoring"
+
     /** Navitia rend les horaires dans le fuseau de la couverture, ici Paris. */
     private val PARIS: ZoneId = ZoneId.of("Europe/Paris")
     private val NAVITIA_DT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
@@ -201,6 +204,28 @@ object NavitiaApi {
             // 404 no_solution : rien ne permet d'arriver a l'heure. C'est une reponse, pas une panne.
             if (e.code == 404) emptyList() else throw e
         }
+    }
+
+    /**
+     * Les departs temps reel d'une gare, avec leur voie. Sert a completer ce que /journeys
+     * ne donne pas en Ile-de-France. Silencieux en cas d'echec : la voie est un plus.
+     */
+    suspend fun fetchDepartures(apiKey: String, stopAreaId: String): List<StopDeparture> =
+        withContext(Dispatchers.IO) {
+            val ref = siriMonitoringRef(stopAreaId) ?: return@withContext emptyList()
+            val url = "$SIRI?MonitoringRef=${URLEncoder.encode(ref, "UTF-8")}"
+            val body = runCatching { httpGet(url, apiKey) }.getOrElse { return@withContext emptyList() }
+            SiriParser.parse(body)
+        }
+
+    /**
+     * "stop_area:IDFM:71517" -> "STIF:StopArea:SP:71517:". SIRI ne connait pas l'identifiant
+     * Navitia, seulement la reference STIF de la zone d'arret ; on en extrait le numero.
+     */
+    internal fun siriMonitoringRef(stopAreaId: String): String? {
+        val ref = stopAreaId.substringAfterLast(':')
+        if (ref.isBlank() || !ref.all { it.isDigit() }) return null
+        return "STIF:StopArea:SP:$ref:"
     }
 
     private fun forbidden(modes: Set<String>): String =

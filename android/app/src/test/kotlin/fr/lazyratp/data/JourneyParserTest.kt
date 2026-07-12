@@ -124,6 +124,33 @@ class JourneyParserTest {
     }
 
     @Test
+    fun `les entites numeriques sont decodees`() {
+        // Les avis travaux PRIM arrivent en entites numeriques : sans decodage, l'usager lit
+        // "P&#233;riode" au lieu de "Période".
+        val body = """
+        {
+          "disruptions": [
+            {"id": "d1", "status": "active", "severity": {"name": "perturbée"},
+             "messages": [
+               {"text": "Orly", "channel": {"types": ["title"]}},
+               {"text": "P&#233;riode toute la journ&#233;e, ao&#251;t inclus", "channel": {"types": ["web"]}}
+             ]}
+          ],
+          "journeys": [{
+            "departure_date_time":"20260712T080000","arrival_date_time":"20260712T081000",
+            "duration":600,"nb_transfers":0,
+            "sections":[{"type":"public_transport","from":{"stop_point":{"name":"A"}},
+              "to":{"stop_point":{"name":"B"}},
+              "display_informations":{"commercial_mode":"RER","code":"C",
+                "links":[{"type":"disruption","id":"d1"}]}}]
+          }]
+        }
+        """.trimIndent()
+        val message = JourneyParser.parse(body).single().disruptions.single().message
+        assertEquals("Période toute la journée, août inclus", message)
+    }
+
+    @Test
     fun `un depart identique dedupe ne casse pas le parsing`() {
         // Le compteur de correspondances lit nb_transfers, pas le nombre de troncons.
         assertEquals(0, journey.transfers)

@@ -38,6 +38,7 @@ import fr.lazyratp.data.LineBadge
 import fr.lazyratp.data.Prefs
 import fr.lazyratp.data.Step
 import fr.lazyratp.data.WidgetCache
+import fr.lazyratp.data.isRailMode
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -160,7 +161,7 @@ private fun StepCard(step: Step) {
             // Le code mission (VACK...) dit quelles gares le RER dessert ; le numero identifie
             // le train du jour. La mission n'a de sens que sur le rail : ailleurs, on l'omet.
             val ids = buildList {
-                if (isRail(step.mode) && step.headsign.isNotBlank()) add("Mission ${step.headsign}")
+                if (isRailMode(step.mode) && step.headsign.isNotBlank()) add("Mission ${step.headsign}")
                 if (step.trainNumber.isNotBlank()) add("Train n° ${step.trainNumber}")
             }
             if (ids.isNotEmpty()) {
@@ -236,10 +237,6 @@ private fun DisruptionCard(disruption: Disruption) {
         }
     }
 }
-
-/** Le mode est-il ferroviaire ? Seul le rail porte un code mission a montrer. */
-private fun isRail(mode: String): Boolean =
-    listOf("rer", "transilien", "ter", "train").any { mode.contains(it, ignoreCase = true) }
 
 /** "FFCC30" -> Color, ou null quand la chaine n'est pas une couleur hex exploitable. */
 private fun parseColor(hex: String): Color? {

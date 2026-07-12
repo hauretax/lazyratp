@@ -102,7 +102,8 @@ object WidgetRepo {
                     )
                 } ?: emptyList()
             }
-            val cache = WidgetCache(favorite.label, journeys, System.currentTimeMillis(), favorite.arriveBy)
+            val enriched = enrichPlatforms(apiKey, favorite, journeys)
+            val cache = WidgetCache(favorite.label, enriched, System.currentTimeMillis(), favorite.arriveBy)
             Prefs.setCache(context, cache)
             WidgetState.Ready(
                 cache.favoriteLabel, ruleName, cache.journeys, cache.fetchedAt, false, display, cache.arriveBy,
@@ -117,6 +118,26 @@ object WidgetRepo {
                 else -> WidgetState.Error(e.message ?: "Reseau indisponible")
             }
         }
+    }
+
+    /**
+     * Complete la voie de depart via SIRI, que /journeys ne fournit pas en Ile-de-France.
+     * Un seul appel, pour la gare de depart, et seulement s'il y a un train a quai : le metro
+     * et le bus n'ont pas de voie annoncee qui vaille l'aller-retour reseau. Une position
+     * courante n'a pas de gare fixe a interroger : on la laisse sans voie. Silencieux en cas
+     * d'echec : la voie est un plus, pas de quoi retarder ou vider le widget.
+     */
+    private suspend fun enrichPlatforms(
+        apiKey: String,
+        favorite: Favorite,
+        journeys: List<Journey>,
+    ): List<Journey> {
+        if (favorite.fromHere) return journeys
+        val hasRail = journeys.any { it.steps.firstOrNull()?.let { s -> isRailMode(s.mode) } == true }
+        if (!hasRail) return journeys
+        val departures = runCatching { NavitiaApi.fetchDepartures(apiKey, favorite.from.id) }
+            .getOrDefault(emptyList())
+        return PlatformMatcher.enrich(journeys, departures)
     }
 
     /** Dire *pourquoi* la position manque : la permission, ou le releve lui-meme. */

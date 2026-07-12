@@ -35,6 +35,10 @@ object PhysicalMode {
     const val BUS = "physical_mode:Bus"
 }
 
+/** Le mode est-il ferroviaire ? Seul le rail porte une mission et une voie annoncee a montrer. */
+fun isRailMode(mode: String): Boolean =
+    listOf("rer", "transilien", "ter", "train").any { mode.contains(it, ignoreCase = true) }
+
 /**
  * Un favori est une requete, pas seulement une paire de gares : le mode et les exclusions
  * en font partie. Deux favoris peuvent donc viser les memes gares avec des reponses
