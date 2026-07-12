@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import fr.lazyratp.rules.Rule
+import fr.lazyratp.rules.dropFavorite
 import fr.lazyratp.rules.repointFavorite
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "lazyratp")
@@ -82,12 +83,20 @@ object Prefs {
         }
     }
 
+    /**
+     * Supprime un favori et les regles qui le visaient. Une regle ne calcule pas de trajet,
+     * elle en designe un : sans son favori, elle n'a plus rien a designer et ne laissait
+     * qu'une carte inerte a nettoyer a la main.
+     */
     suspend fun removeFavorite(context: Context, index: Int) {
         context.dataStore.edit { prefs ->
             val current = decodeFavorites(prefs[KEY_FAVORITES]).toMutableList()
             if (index !in current.indices) return@edit
-            current.removeAt(index)
+            val removed = current.removeAt(index)
             prefs[KEY_FAVORITES] = json.encodeToString(current.toList())
+
+            val rules = decodeRules(prefs[KEY_RULES]).dropFavorite(removed.id)
+            prefs[KEY_RULES] = json.encodeToString(rules)
 
             val selected = prefs[KEY_SELECTED] ?: 0
             prefs[KEY_SELECTED] = selected.coerceAtMost((current.size - 1).coerceAtLeast(0))

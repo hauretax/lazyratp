@@ -1,7 +1,6 @@
 package fr.lazyratp.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,9 +10,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -30,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import fr.lazyratp.data.Favorite
 import fr.lazyratp.data.FavoriteDraft
@@ -39,8 +37,12 @@ import fr.lazyratp.data.Prefs
 import fr.lazyratp.data.Station
 import fr.lazyratp.rules.PinRule
 import fr.lazyratp.rules.Rule
+import fr.lazyratp.rules.countForFavorite
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** L'index qui designe la creation plutot que l'edition d'un favori existant. */
+private const val NEW = -1
 
 @Composable
 internal fun FavoritesTab(
@@ -52,25 +54,51 @@ internal fun FavoritesTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var editing by remember { mutableStateOf<Int?>(null) }
+    // null = la liste. NEW = creation. >= 0 = edition du favori a cet index.
+    var form by remember { mutableStateOf<Int?>(null) }
+    var confirmDelete by remember { mutableStateOf<Int?>(null) }
 
-    // Edition : le formulaire remplit l'ecran, comme l'editeur de regles.
-    val editIndex = editing
-    if (editIndex != null && editIndex in favorites.indices) {
+    val open = form
+    if (open != null) {
+        // Creation et edition partagent l'ecran, comme l'editeur de regles : meme
+        // formulaire, meme place, seuls le titre et le bouton changent.
+        val initial = favorites.getOrNull(open)
         FavoriteForm(
             apiKey = apiKey,
-            initial = favorites[editIndex],
-            submitLabel = "Enregistrer",
-            onCancel = { editing = null },
+            initial = initial,
+            title = if (initial == null) "Nouveau favori" else "Modifier le favori",
+            submitLabel = if (initial == null) "Ajouter" else "Enregistrer",
+            onCancel = { form = null },
             onSubmit = { favorite ->
                 scope.launch {
-                    Prefs.replaceFavorite(context, editIndex, favorite)
+                    if (initial == null) {
+                        Prefs.addFavorite(context, favorite)
+                    } else {
+                        Prefs.replaceFavorite(context, open, favorite)
+                    }
                     refreshWidget(context)
                 }
-                editing = null
+                form = null
             },
         )
         return
+    }
+
+    confirmDelete?.let { index ->
+        favorites.getOrNull(index)?.let { favorite ->
+            DeleteFavoriteDialog(
+                favorite = favorite,
+                ruleCount = rules.countForFavorite(favorite.id),
+                onDismiss = { confirmDelete = null },
+                onConfirm = {
+                    scope.launch {
+                        Prefs.removeFavorite(context, index)
+                        refreshWidget(context)
+                    }
+                    confirmDelete = null
+                },
+            )
+        }
     }
 
     Column(
@@ -79,30 +107,20 @@ internal fun FavoritesTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Nouveau favori", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Un favori est un trajet : d'ou, vers ou, et comment on calcule les horaires. " +
+                "Ce qui decide de l'afficher, c'est une regle — onglet Regles.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+
         if (apiKey.isBlank()) {
             Text(
-                "Enregistre d'abord ta cle API dans l'onglet Parametres.",
+                "Enregistre d'abord ta cle API dans l'onglet Parametres : sans elle, " +
+                    "impossible de chercher une gare.",
                 style = MaterialTheme.typography.bodySmall,
-            )
-        } else {
-            FavoriteForm(
-                apiKey = apiKey,
-                initial = null,
-                submitLabel = "Ajouter aux favoris",
-                onCancel = null,
-                onSubmit = { favorite ->
-                    scope.launch {
-                        Prefs.addFavorite(context, favorite)
-                        refreshWidget(context)
-                    }
-                },
             )
         }
 
-        HorizontalDivider()
-
-        Text("Favoris", style = MaterialTheme.typography.titleMedium)
         if (favorites.isEmpty()) {
             Text("Aucun favori.", style = MaterialTheme.typography.bodySmall)
         } else {
@@ -110,78 +128,134 @@ internal fun FavoritesTab(
                 "Le bouton radio designe le trajet de repli : celui affiche quand aucune regle ne matche.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            favorites.forEachIndexed { index, favorite ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = index == selected,
-                                onClick = {
-                                    scope.launch {
-                                        Prefs.setSelected(context, index)
-                                        refreshWidget(context)
-                                    }
-                                },
-                            )
-                            Text(favorite.label, modifier = Modifier.weight(1f))
-                        }
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // Bascule idempotente : l'identifiant de l'epingle est derive
-                            // du favori, donc reappuyer la retire au lieu d'en creer une seconde.
-                            val pinned = PinRule.isActive(rules, favorite.id, System.currentTimeMillis())
-                            TextButton(onClick = {
+        }
+
+        favorites.forEachIndexed { index, favorite ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = index == selected,
+                            onClick = {
                                 scope.launch {
-                                    Prefs.setRules(
-                                        context,
-                                        PinRule.toggle(rules, favorite.id, System.currentTimeMillis()),
-                                    )
+                                    Prefs.setSelected(context, index)
                                     refreshWidget(context)
                                 }
-                            }) { Text(if (pinned) "Desepingler" else "Epingler 24 h") }
+                            },
+                        )
+                        Text(favorite.label, modifier = Modifier.weight(1f))
+                    }
 
-                            Spacer(Modifier.weight(1f))
+                    val ruleCount = rules.countForFavorite(favorite.id)
+                    if (ruleCount > 0) {
+                        Text(
+                            text = if (ruleCount == 1) "1 regle l'affiche" else "$ruleCount regles l'affichent",
+                            style = MaterialTheme.typography.bodySmall,
+                            // Aligne sous le libelle, pas sous le bouton radio.
+                            modifier = Modifier.padding(start = 48.dp),
+                        )
+                    }
 
-                            TextButton(onClick = { editing = index }) { Text("Modifier") }
-                            TextButton(onClick = {
-                                scope.launch {
-                                    Prefs.removeFavorite(context, index)
-                                    refreshWidget(context)
-                                }
-                            }) { Text("Supprimer") }
-                        }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // Bascule idempotente : l'identifiant de l'epingle est derive
+                        // du favori, donc reappuyer la retire au lieu d'en creer une seconde.
+                        val pinned = PinRule.isActive(rules, favorite.id, System.currentTimeMillis())
+                        TextButton(onClick = {
+                            scope.launch {
+                                Prefs.setRules(
+                                    context,
+                                    PinRule.toggle(rules, favorite.id, System.currentTimeMillis()),
+                                )
+                                refreshWidget(context)
+                            }
+                        }) { Text(if (pinned) "Desepingler" else "Epingler 24 h") }
+
+                        Spacer(Modifier.weight(1f))
+
+                        TextButton(onClick = { form = index }) { Text("Modifier") }
+                        TextButton(onClick = { confirmDelete = index }) { Text("Supprimer") }
                     }
                 }
             }
         }
 
+        Text(
+            "Epingler cree une regle sans condition, en tete de liste, qui expire au bout " +
+                "de 24 h : le trajet passe devant toutes les autres jusque-la.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+
         HorizontalDivider()
         Button(
-            onClick = { scope.launch { refreshWidget(context) } },
+            onClick = { form = NEW },
+            enabled = apiKey.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Rafraichir le widget") }
+        ) { Text("Nouveau favori") }
 
         Spacer(Modifier.height(24.dp))
     }
 }
 
 /**
- * Formulaire d'un favori, partage entre l'ajout et l'edition. Pre-rempli depuis
- * [initial] a l'edition, vide a l'ajout.
+ * Supprimer un favori emporte ses regles : elles ne designeraient plus rien. On le dit
+ * avant, pas apres — c'est la seule suppression de l'app qui en entraine d'autres.
  */
+@Composable
+private fun DeleteFavoriteDialog(
+    favorite: Favorite,
+    ruleCount: Int,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Supprimer ce favori ?") },
+        text = {
+            Text(
+                buildString {
+                    append(favorite.label)
+                    if (ruleCount > 0) {
+                        append("\n\n")
+                        append(
+                            if (ruleCount == 1) {
+                                "1 regle le designe : elle sera supprimee aussi, "
+                            } else {
+                                "$ruleCount regles le designent : elles seront supprimees aussi, "
+                            }
+                        )
+                        append("faute de trajet a afficher.")
+                    }
+                }
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Supprimer") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
+}
+
+/** Formulaire d'un favori, partage entre l'ajout et l'edition. */
 @Composable
 private fun FavoriteForm(
     apiKey: String,
     initial: Favorite?,
+    title: String,
     submitLabel: String,
-    onCancel: (() -> Unit)?,
+    onCancel: () -> Unit,
     onSubmit: (Favorite) -> Unit,
 ) {
     var draft by remember(initial) { mutableStateOf(FavoriteDraft.of(initial)) }
 
-    val body: @Composable () -> Unit = {
+    Column(
+        modifier = Modifier
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+
         CheckRow("Partir de ma position", draft.fromHere) { draft = draft.copy(fromHere = it) }
         if (draft.fromHere) {
             Text(
@@ -197,32 +271,16 @@ private fun FavoriteForm(
         CheckRow("Dernier trajet du jour", draft.lastJourney) { draft = draft.copy(lastJourney = it) }
         CheckRow("Sans bus (exclut aussi le Noctilien)", draft.noBus) { draft = draft.copy(noBus = it) }
 
+        HorizontalDivider()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (onCancel != null) {
-                TextButton(onClick = onCancel) { Text("Annuler") }
-            }
+            TextButton(onClick = onCancel) { Text("Annuler") }
             Button(
                 onClick = { draft.toFavorite(initial)?.let(onSubmit) },
                 enabled = draft.isComplete,
             ) { Text(submitLabel) }
         }
-    }
 
-    // A l'edition, le formulaire occupe l'ecran et defile ; a l'ajout, il s'insere
-    // dans la colonne deja defilante de l'onglet.
-    if (onCancel != null) {
-        Column(
-            modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("Modifier le favori", style = MaterialTheme.typography.titleMedium)
-            body()
-            Spacer(Modifier.height(24.dp))
-        }
-    } else {
-        body()
+        Spacer(Modifier.height(24.dp))
     }
 }
 

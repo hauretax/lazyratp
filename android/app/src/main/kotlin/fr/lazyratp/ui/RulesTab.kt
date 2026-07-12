@@ -102,7 +102,14 @@ internal fun RulesTab(apiKey: String, favorites: List<Favorite>, rules: List<Rul
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            "La premiere regle qui matche gagne. L'ordre de la liste est la priorite.",
+            "Une regle ne calcule aucun trajet : elle designe un favori et dit quand " +
+                "l'afficher — jour, heure, lieu.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            "La premiere regle qui matche gagne. L'ordre de la liste est la priorite, " +
+                "et il t'appartient : les fleches la changent. Si aucune ne matche, le " +
+                "widget affiche le trajet de repli choisi dans l'onglet Favoris.",
             style = MaterialTheme.typography.bodySmall,
         )
 
@@ -188,6 +195,7 @@ private fun RuleEditor(
     val initialPoint = initial?.place as? PlaceCondition.NearPoint
     var usePlace by remember { mutableStateOf(initialPoint != null) }
     var point by remember { mutableStateOf(initialPoint) }
+    var searchingPlace by remember { mutableStateOf(false) }
     var radiusText by remember { mutableStateOf((initialPoint?.radiusMeters ?: 600).toString()) }
     val radius = radiusText.toIntOrNull()
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
@@ -293,24 +301,38 @@ private fun RuleEditor(
         CheckRow("Seulement pres d'un lieu", usePlace) { usePlace = it }
         if (usePlace) {
             val current = point
-            if (current == null) {
-                if (apiKey.isBlank()) {
-                    Text(
-                        "Saisis ta cle API dans Parametres pour chercher une adresse.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } else {
-                    AddressField(apiKey) { found ->
-                        point = PlaceCondition.NearPoint(found.name, found.lat, found.lon, radius ?: 600)
-                    }
-                }
-            } else {
+            if (current != null && !searchingPlace) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(current.name, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { point = null }) { Text("Changer") }
+                    TextButton(onClick = { searchingPlace = true }) { Text("Changer") }
+                }
+            } else if (apiKey.isBlank()) {
+                Text(
+                    "Saisis ta cle API dans Parametres pour chercher une adresse.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                AddressField(apiKey) { found ->
+                    point = PlaceCondition.NearPoint(found.name, found.lat, found.lon, radius ?: 600)
+                    searchingPlace = false
+                }
+                // Comme pour les gares : "Changer" ne doit pas effacer le lieu avant qu'on
+                // en ait choisi un autre, sinon Enregistrer se desactive sans retour possible.
+                if (current != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Actuel : ${current.name}",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { searchingPlace = false }) { Text("Garder") }
+                    }
                 }
             }
 

@@ -9,7 +9,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -171,6 +173,21 @@ internal fun SettingsTab(apiKey: String, display: Display) {
                 "tu ne peux plus l'attraper. La marche a l'arrivee est ajoutee a l'heure affichee.",
             style = MaterialTheme.typography.bodySmall,
         )
+
+        HorizontalDivider()
+
+        Text("Widget", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Le widget se rafraichit tout seul toutes les 15 minutes, et a chaque " +
+                "changement fait ici. Ce bouton force un rafraichissement immediat.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(
+            onClick = { scope.launch { refreshWidget(context) } },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Rafraichir le widget") }
+
+        Spacer(Modifier.height(24.dp))
     }
 }
 
