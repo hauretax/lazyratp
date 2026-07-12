@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,7 @@ import fr.lazyratp.data.Display
 import fr.lazyratp.data.LocationProvider
 import fr.lazyratp.data.NavitiaApi
 import fr.lazyratp.data.Prefs
+import fr.lazyratp.data.WidgetTheme
 import kotlinx.coroutines.launch
 
 @Composable
@@ -51,6 +53,12 @@ internal fun SettingsTab(apiKey: String, display: Display) {
 
     fun save(next: Display) = scope.launch {
         Prefs.setDisplay(context, next)
+        refreshWidget(context)
+    }
+
+    val theme by Prefs.widgetThemeFlow(context).collectAsState(initial = WidgetTheme())
+    fun saveTheme(next: WidgetTheme) = scope.launch {
+        Prefs.setWidgetTheme(context, next)
         refreshWidget(context)
     }
 
@@ -173,6 +181,10 @@ internal fun SettingsTab(apiKey: String, display: Display) {
                 "tu ne peux plus l'attraper. La marche a l'arrivee est ajoutee a l'heure affichee.",
             style = MaterialTheme.typography.bodySmall,
         )
+
+        HorizontalDivider()
+
+        WidgetThemeSection(theme = theme, display = display, onChange = ::saveTheme)
 
         HorizontalDivider()
 

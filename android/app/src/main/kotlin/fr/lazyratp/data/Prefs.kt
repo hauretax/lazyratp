@@ -29,6 +29,7 @@ object Prefs {
     private val KEY_CACHE = stringPreferencesKey("cache")
     private val KEY_RULES = stringPreferencesKey("rules")
     private val KEY_DISPLAY = stringPreferencesKey("display")
+    private val KEY_THEME = stringPreferencesKey("widget_theme")
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -119,6 +120,20 @@ object Prefs {
     private fun decodeDisplay(raw: String?): Display {
         if (raw.isNullOrBlank()) return Display()
         return runCatching { json.decodeFromString<Display>(raw) }.getOrDefault(Display())
+    }
+
+    fun widgetThemeFlow(context: Context): Flow<WidgetTheme> =
+        context.dataStore.data.map { decodeTheme(it[KEY_THEME]) }
+
+    suspend fun widgetTheme(context: Context): WidgetTheme = widgetThemeFlow(context).first()
+
+    suspend fun setWidgetTheme(context: Context, value: WidgetTheme) {
+        context.dataStore.edit { it[KEY_THEME] = json.encodeToString(value) }
+    }
+
+    private fun decodeTheme(raw: String?): WidgetTheme {
+        if (raw.isNullOrBlank()) return WidgetTheme()
+        return runCatching { json.decodeFromString<WidgetTheme>(raw) }.getOrDefault(WidgetTheme())
     }
 
     /** L'ordre de la liste est la priorite : la premiere regle qui matche gagne. */
