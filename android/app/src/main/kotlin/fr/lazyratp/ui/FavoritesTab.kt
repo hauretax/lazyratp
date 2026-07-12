@@ -33,18 +33,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import fr.lazyratp.data.Favorite
+import fr.lazyratp.data.FavoriteDraft
 import fr.lazyratp.data.NavitiaApi
-import fr.lazyratp.data.PhysicalMode
 import fr.lazyratp.data.Prefs
 import fr.lazyratp.data.Station
-import fr.lazyratp.data.TripMode
 import fr.lazyratp.rules.PinRule
 import fr.lazyratp.rules.Rule
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-/** Place-tenant : quand fromHere est vrai, Favorite ignore ce champ. */
-private val HERE_STATION = Station(Favorite.HERE, "Ma position")
 
 @Composable
 internal fun FavoritesTab(
@@ -183,47 +179,31 @@ private fun FavoriteForm(
     onCancel: (() -> Unit)?,
     onSubmit: (Favorite) -> Unit,
 ) {
-    var from by remember(initial) { mutableStateOf(if (initial?.fromHere == true) null else initial?.from) }
-    var to by remember(initial) { mutableStateOf(initial?.to) }
-    var fromHere by remember(initial) { mutableStateOf(initial?.fromHere ?: false) }
-    var lastJourney by remember(initial) { mutableStateOf(initial?.mode == TripMode.LAST_JOURNEY) }
-    var noBus by remember(initial) { mutableStateOf(initial != null && PhysicalMode.BUS in initial.forbiddenModes) }
+    var draft by remember(initial) { mutableStateOf(FavoriteDraft.of(initial)) }
 
     val body: @Composable () -> Unit = {
-        CheckRow("Partir de ma position", fromHere) { fromHere = it }
-        if (fromHere) {
+        CheckRow("Partir de ma position", draft.fromHere) { draft = draft.copy(fromHere = it) }
+        if (draft.fromHere) {
             Text(
                 "Navitia calcule lui-meme la marche jusqu'au premier arret. " +
                     "Autorise la position dans l'onglet Parametres.",
                 style = MaterialTheme.typography.bodySmall,
             )
         } else {
-            StationField("Depart", apiKey, from) { from = it }
+            StationField("Depart", apiKey, draft.from) { draft = draft.copy(from = it) }
         }
-        StationField("Arrivee", apiKey, to) { to = it }
+        StationField("Arrivee", apiKey, draft.to) { draft = draft.copy(to = it) }
 
-        CheckRow("Dernier trajet du jour", lastJourney) { lastJourney = it }
-        CheckRow("Sans bus (exclut aussi le Noctilien)", noBus) { noBus = it }
+        CheckRow("Dernier trajet du jour", draft.lastJourney) { draft = draft.copy(lastJourney = it) }
+        CheckRow("Sans bus (exclut aussi le Noctilien)", draft.noBus) { draft = draft.copy(noBus = it) }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (onCancel != null) {
                 TextButton(onClick = onCancel) { Text("Annuler") }
             }
             Button(
-                onClick = {
-                    val t = to ?: return@Button
-                    val f = if (fromHere) HERE_STATION else (from ?: return@Button)
-                    onSubmit(
-                        Favorite(
-                            from = f,
-                            to = t,
-                            mode = if (lastJourney) TripMode.LAST_JOURNEY else TripMode.NEXT_DEPARTURES,
-                            forbiddenModes = if (noBus) setOf(PhysicalMode.BUS) else emptySet(),
-                            fromHere = fromHere,
-                        )
-                    )
-                },
-                enabled = to != null && (fromHere || from != null),
+                onClick = { draft.toFavorite(initial)?.let(onSubmit) },
+                enabled = draft.isComplete,
             ) { Text(submitLabel) }
         }
     }
@@ -251,10 +231,13 @@ private fun StationField(
     label: String,
     apiKey: String,
     picked: Station?,
-    onPick: (Station?) -> Unit,
+    onPick: (Station) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Station>>(emptyList()) }
+    // "Changer" ouvre la recherche mais ne vide pas la gare : sinon, ouvrir la recherche par
+    // curiosite desactivait Enregistrer et forceait a tout re-saisir, sans retour possible.
+    var searching by remember(picked) { mutableStateOf(false) }
 
     // Debounce : Navitia est appele 300 ms apres la derniere frappe, pas a chaque caractere.
     LaunchedEffect(query, apiKey) {
@@ -266,7 +249,7 @@ private fun StationField(
         results = NavitiaApi.searchStations(apiKey, query)
     }
 
-    if (picked != null) {
+    if (picked != null && !searching) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -275,7 +258,7 @@ private fun StationField(
             TextButton(onClick = {
                 query = ""
                 results = emptyList()
-                onPick(null)
+                searching = true
             }) { Text("Changer") }
         }
         return
@@ -289,6 +272,25 @@ private fun StationField(
         modifier = Modifier.fillMaxWidth(),
     )
 
+    // La gare actuelle reste sous les yeux pendant la recherche, et on peut y renoncer.
+    if (picked != null) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Actuel : ${picked.name}",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = {
+                query = ""
+                results = emptyList()
+                searching = false
+            }) { Text("Garder") }
+        }
+    }
+
     results.take(5).forEach { station ->
         Card(
             modifier = Modifier
@@ -296,6 +298,7 @@ private fun StationField(
                 .clickable {
                     query = ""
                     results = emptyList()
+                    searching = false
                     onPick(station)
                 },
         ) {
