@@ -31,6 +31,26 @@ object WidgetRepo {
     private val PARIS: ZoneId = ZoneId.of("Europe/Paris")
 
     /**
+     * Le dernier contenu connu, sans reseau. Sert a amorcer la composition : sans lui, le
+     * widget se viderait le temps du refetch, alors qu'afficher des horaires d'il y a deux
+     * minutes reste plus utile qu'un ecran de chargement.
+     *
+     * Pas marque stale : le "!" signale un echec reseau, or ici on n'a encore rien tente.
+     * L'horodatage du header suffit a dire que le contenu date.
+     */
+    suspend fun seed(context: Context): WidgetState.Ready? {
+        val cache = Prefs.cache(context) ?: return null
+        return WidgetState.Ready(
+            label = cache.favoriteLabel,
+            ruleName = null,
+            journeys = cache.journeys,
+            fetchedAt = cache.fetchedAt,
+            stale = false,
+            display = Prefs.display(context),
+        )
+    }
+
+    /**
      * Choisit le favori via le moteur de regles, puis rafraichit depuis Navitia.
      * Retombe sur le dernier cache si le reseau echoue : un widget qui affiche des
      * horaires perimes reste plus utile qu'un widget vide.

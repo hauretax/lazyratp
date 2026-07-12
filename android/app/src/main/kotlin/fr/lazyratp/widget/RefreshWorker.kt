@@ -1,7 +1,6 @@
 package fr.lazyratp.widget
 
 import android.content.Context
-import androidx.glance.appwidget.updateAll
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -21,7 +20,7 @@ class RefreshWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        NextTrainsWidget().updateAll(applicationContext)
+        WidgetRefresh.requestAll(applicationContext)
         return Result.success()
     }
 

@@ -22,10 +22,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.glance.appwidget.updateAll
 import fr.lazyratp.data.Display
 import fr.lazyratp.data.Prefs
-import fr.lazyratp.widget.NextTrainsWidget
+import fr.lazyratp.widget.WidgetRefresh
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,7 +41,7 @@ class MainActivity : ComponentActivity() {
 }
 
 internal suspend fun refreshWidget(context: Context) {
-    NextTrainsWidget().updateAll(context)
+    WidgetRefresh.requestAll(context)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

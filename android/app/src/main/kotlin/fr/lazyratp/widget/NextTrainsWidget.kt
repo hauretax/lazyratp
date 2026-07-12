@@ -2,8 +2,11 @@ package fr.lazyratp.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.Preferences
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
@@ -15,6 +18,9 @@ import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
+import androidx.glance.currentState
+import androidx.glance.state.GlanceStateDefinition
+import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -42,11 +48,34 @@ import java.time.format.DateTimeFormatter
 
 class NextTrainsWidget : GlanceAppWidget() {
 
+    // Sans state definition, updateAll() n'a rien a comparer sur une session vivante et
+    // ne recompose jamais. C'est par ce state que WidgetRefresh fait passer son jeton.
+    override val stateDefinition: GlanceStateDefinition<Preferences> = PreferencesGlanceStateDefinition
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val state = WidgetRepo.load(context)
+        // Lu hors composition, mais sans reseau et re-lu a chaque session : c'est la valeur
+        // d'amorcage, pas la source de verite. Elle evite l'ecran de chargement au refetch.
+        val seed = WidgetRepo.seed(context)
+
         provideContent {
+            // Charger DANS la composition, pas avant : provideContent ne rend jamais la main,
+            // donc un etat capture au-dessus resterait fige pour toute la duree de la session,
+            // et le bouton de rafraichissement paraitrait mort.
+            val token = currentState<Preferences>()[WidgetRefresh.TOKEN] ?: 0L
+            val state by produceState<WidgetState?>(seed, token) { value = WidgetRepo.load(context) }
+
             GlanceTheme {
-                Body(state)
+                when (val current = state) {
+                    // Seulement au tout premier affichage, quand il n'existe aucun cache.
+                    null -> Column(
+                        modifier = GlanceModifier
+                            .fillMaxSize()
+                            .background(GlanceTheme.colors.widgetBackground)
+                            .padding(12.dp),
+                    ) { Hint("Chargement...") }
+
+                    else -> Body(current)
+                }
             }
         }
     }
@@ -126,11 +155,16 @@ private fun Header(state: WidgetState.Ready) {
                 text = if (state.stale) "! ${state.fetchedAt.asClock()}" else state.fetchedAt.asClock(),
                 style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
             )
-            Spacer(GlanceModifier.width(8.dp))
+            // Le glyphe fait 15 sp : sans marge, la cible tactile est plus petite que le
+            // doigt et le bouton passe pour mort avant meme d'avoir ete presse. La marge
+            // tient lieu d'espacement, d'ou l'absence de Spacer : elle est deja prise sur
+            // la largeur du libelle, qui est ce qu'on tronque en premier.
             Text(
                 text = "⟳",
                 style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp),
-                modifier = GlanceModifier.clickable(actionRunCallback<RefreshAction>()),
+                modifier = GlanceModifier
+                    .clickable(actionRunCallback<RefreshAction>())
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
             )
         }
 
