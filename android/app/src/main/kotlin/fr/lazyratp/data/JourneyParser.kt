@@ -51,6 +51,8 @@ object JourneyParser {
                     arrival = parseTime(s.optString("arrival_date_time")),
                     platform = platformOf(s),
                     color = info.optString("color"),
+                    headsign = info.optString("headsign"),
+                    trainNumber = info.optString("trip_short_name"),
                 )
                 collectDisruptionIds(info, disruptionIds)
                 pendingWalk = 0

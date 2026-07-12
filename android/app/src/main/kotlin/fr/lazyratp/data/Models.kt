@@ -128,6 +128,10 @@ data class Step(
     val platform: String = "",
     /** Couleur de la ligne, hex sans '#' (ex. "FFCC30"). Vide si absente. */
     val color: String = "",
+    /** Code mission du RER/Transilien (ex. "VACK") : il encode les gares desservies. Vide hors train. */
+    val headsign: String = "",
+    /** Numero de train (Navitia trip_short_name, ex. "148248"). Vide si absent. */
+    val trainNumber: String = "",
 )
 
 /**

@@ -156,6 +156,20 @@ private fun StepCard(step: Step) {
             if (step.direction.isNotBlank()) {
                 Text("Direction ${step.direction}", style = MaterialTheme.typography.bodyMedium)
             }
+
+            // Le code mission (VACK...) dit quelles gares le RER dessert ; le numero identifie
+            // le train du jour. La mission n'a de sens que sur le rail : ailleurs, on l'omet.
+            val ids = buildList {
+                if (isRail(step.mode) && step.headsign.isNotBlank()) add("Mission ${step.headsign}")
+                if (step.trainNumber.isNotBlank()) add("Train n° ${step.trainNumber}")
+            }
+            if (ids.isNotEmpty()) {
+                Text(
+                    ids.joinToString("  ·  "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             Text(
                 "${step.departure.asClock()}  ${step.from}",
                 style = MaterialTheme.typography.bodyMedium,
@@ -222,6 +236,10 @@ private fun DisruptionCard(disruption: Disruption) {
         }
     }
 }
+
+/** Le mode est-il ferroviaire ? Seul le rail porte un code mission a montrer. */
+private fun isRail(mode: String): Boolean =
+    listOf("rer", "transilien", "ter", "train").any { mode.contains(it, ignoreCase = true) }
 
 /** "FFCC30" -> Color, ou null quand la chaine n'est pas une couleur hex exploitable. */
 private fun parseColor(hex: String): Color? {

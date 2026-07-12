@@ -50,6 +50,7 @@ class JourneyParserTest {
               "to": {"stop_point": {"name": "Bibliothèque François Mitterrand"}},
               "display_informations": {
                 "commercial_mode": "RER", "code": "C", "color": "FFCC30",
+                "headsign": "VACK", "trip_short_name": "148248",
                 "direction": "Versailles Château Rive Gauche",
                 "links": [
                   {"type": "stop_area", "id": "sa-1"},
@@ -86,6 +87,13 @@ class JourneyParserTest {
     @Test
     fun `la marche precedant le troncon est reportee`() {
         assertEquals(180, journey.steps.single().walkBefore)
+    }
+
+    @Test
+    fun `le troncon porte le code mission et le numero de train`() {
+        val step = journey.steps.single()
+        assertEquals("VACK", step.headsign)
+        assertEquals("148248", step.trainNumber)
     }
 
     @Test
